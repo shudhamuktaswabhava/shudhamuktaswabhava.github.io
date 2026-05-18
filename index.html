@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+
 <html dir="rtl" lang="he">
 <head>
 <meta charset="UTF-8">
@@ -17,9 +17,9 @@ textarea { font-family: Georgia, serif; }
 <body>
 <div id="root"></div>
 <script type="text/babel">
-
+ 
 const API_KEY = localStorage.getItem("shari_api_key") || "";
-
+ 
 function ApiKeySetup({ onSave }) {
   const [key, setKey] = React.useState("");
   return (
@@ -42,7 +42,7 @@ function ApiKeySetup({ onSave }) {
 }
 const STORAGE_KEY = "shari_health_v5";
 const TREATMENT_START = "2026-05-17";
-
+ 
 function daysSince(start) {
   const s = new Date(start), n = new Date();
   return Math.max(1, Math.floor((n - s) / 86400000) + 1);
@@ -52,14 +52,14 @@ function formatDate(iso) { const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`
 function loadData() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); } catch { return {}; } }
 function saveData(d) { try { localStorage.setItem(STORAGE_KEY,JSON.stringify(d)); } catch {} }
 function calcKcal(p,c,f) { return Math.round((Number(p)||0)*4+(Number(c)||0)*4+(Number(f)||0)*9); }
-
+ 
 const MEAL_KEYS = ["breakfast","lunch","dinner","snack"];
 const MEAL_LABELS = { breakfast:"ארוחת בוקר", lunch:"ארוחת צהריים", dinner:"ארוחת ערב", snack:"נשנוש" };
 const MEAL_EMOJI = { breakfast:"🌅", lunch:"☀️", dinner:"🌙", snack:"🍎" };
 const SYMPTOM_KEYS = ["bloating","itching","brainFog","headache","fatigue","poorDigestion","poorSleep"];
 const SYMPTOM_LABELS = { bloating:"נפיחות", itching:"גרד", brainFog:"ערפל", headache:"כאב ראש", fatigue:"עייפות", poorDigestion:"עיכול", poorSleep:"שינה קשה" };
 const ACTIVITY_TYPES = ["אימון כוח","הליכה","ריצה","יוגה","שחייה","אופניים","אחר"];
-
+ 
 const C = {
   green:"#6b9977", greenL:"#e8f2ec", greenD:"#4a7058",
   peach:"#d4715a", peachL:"#fdf0ec",
@@ -68,7 +68,7 @@ const C = {
   bg:"#f4f1ec", card:"#fff", border:"#e5e0d8",
   text:"#2d2520", soft:"#7a6e66", muted:"#b0a898",
 };
-
+ 
 function defaultMeal() {
   return { time:"", description:"", protein:0, carbs:0, fat:0,
     darkGreen:false, colorVeg:false, antioxidant:false, digestion:5,
@@ -83,14 +83,14 @@ function defaultDay() {
     morningBaseline: { hrv:"", energyPct:"", stressPct:"", energySubjective:5 },
     eveningReading: { hrv:"", energyPct:"", stressPct:"" },
     meals: { breakfast:defaultMeal(), lunch:defaultMeal(), dinner:defaultMeal(), snack:defaultMeal() },
-    activity: { type:"", duration:"", kcalBurned:"", notes:"" },
+    activity: { type:"", duration:"", kcalBurned:"", avgHR:"", notes:"" },
     symptoms: Object.fromEntries(SYMPTOM_KEYS.map(k=>[k,false])),
     notes:"", dayScore:5,
   };
 }
-
+ 
 const { useState, useEffect, useCallback } = React;
-
+ 
 function Card({ children, style={} }) {
   return <div style={{ background:C.card, borderRadius:16, padding:"14px 16px", marginBottom:12, boxShadow:"0 1px 6px rgba(0,0,0,0.06)", ...style }}>{children}</div>;
 }
@@ -140,7 +140,7 @@ function Lbl({ children }) {
 function Grid({ cols, gap=10, mb=12, children }) {
   return <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap, marginBottom:mb }}>{children}</div>;
 }
-
+ 
 function HeaderBar({ protein, carbs, fat, kcalBurned }) {
   const kcalIn = calcKcal(protein, carbs, fat);
   const net = kcalIn - (Number(kcalBurned)||0);
@@ -181,13 +181,13 @@ function HeaderBar({ protein, carbs, fat, kcalBurned }) {
     </div>
   );
 }
-
+ 
 function MealBlock({ meal, mealKey, onChange }) {
   const [loading, setLoading] = useState(false);
   const [showHRV, setShowHRV] = useState(false);
   const mealKcal = calcKcal(meal.protein, meal.carbs, meal.fat);
   const hrvDiff = meal.hrvBefore && meal.hrvAfter ? Number(meal.hrvAfter)-Number(meal.hrvBefore) : null;
-
+ 
   const calcMacro = async () => {
     if (!meal.description.trim()) return;
     setLoading(true);
@@ -203,7 +203,7 @@ function MealBlock({ meal, mealKey, onChange }) {
     } catch(e) { alert("שגיאה בחישוב מאקרו. בדקי את מפתח ה-API."); }
     setLoading(false);
   };
-
+ 
   return (
     <div style={{ background:C.bg, borderRadius:14, padding:14, marginBottom:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:6 }}>
@@ -263,7 +263,7 @@ function MealBlock({ meal, mealKey, onChange }) {
     </div>
   );
 }
-
+ 
 function LineChart({ data, labels, color, title, unit="" }) {
   const valid = data.filter(v=>v!==null&&v!==undefined&&v!=="");
   if (valid.length<2) return <div style={{ fontSize:12, color:C.muted, padding:"4px 0 14px" }}>אין מספיק נתונים עדיין</div>;
@@ -285,7 +285,7 @@ function LineChart({ data, labels, color, title, unit="" }) {
     </div>
   );
 }
-
+ 
 function WeeklyView({ allData }) {
   const days=Object.values(allData).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
   if (days.length<2) return <Card><div style={{ textAlign:"center", padding:24, color:C.muted, fontSize:14 }}><div style={{ fontSize:32, marginBottom:10 }}>🌱</div><div>צריך לפחות יומיים של נתונים.</div></div></Card>;
@@ -338,7 +338,7 @@ function WeeklyView({ allData }) {
     </div>
   );
 }
-
+ 
 function MonthlyView({ allData }) {
   const days=Object.values(allData).sort((a,b)=>a.date.localeCompare(b.date)).slice(-30);
   if (days.length<4) return <Card><div style={{ textAlign:"center", padding:24, color:C.muted, fontSize:14 }}><div style={{ fontSize:32, marginBottom:10 }}>📅</div><div>צריך לפחות שבוע של נתונים.</div></div></Card>;
@@ -381,14 +381,36 @@ function MonthlyView({ allData }) {
     </div>
   );
 }
-
+ 
+ 
+function DatePicker({ currentDate, onDateChange }) {
+  const [showPicker, setShowPicker] = React.useState(false);
+  const today = todayKey();
+  return (
+    <div style={{ position:"relative" }}>
+      <button onClick={()=>setShowPicker(!showPicker)}
+        style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:8, padding:"4px 10px", color:"#fff", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+        {currentDate === today ? "היום" : formatDate(currentDate)} {showPicker?"▲":"▼"}
+      </button>
+      {showPicker&&(
+        <div style={{ position:"absolute", top:"100%", right:0, background:"#fff", borderRadius:12, padding:12, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:100, marginTop:4 }}>
+          <div style={{ fontSize:12, color:"#b0a898", marginBottom:8 }}>בחרי תאריך</div>
+          <input type="date" defaultValue={currentDate} max={today}
+            onChange={e=>{ onDateChange(e.target.value); setShowPicker(false); }}
+            style={{ padding:"6px 10px", border:"1.5px solid #e5e0d8", borderRadius:8, fontSize:13, outline:"none" }} />
+        </div>
+      )}
+    </div>
+  );
+}
+ 
 function App() {
   const [view, setView] = useState("daily");
   const [allData, setAllData] = useState({});
   const [day, setDay] = useState(null);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState({ morning:true, meals:true, activity:false, evening:false });
-
+ 
   useEffect(()=>{ const data=loadData(); setAllData(data); const key=todayKey(); setDay(data[key]||defaultDay()); },[]);
   const update = useCallback(fn=>{ setDay(p=>typeof fn==="function"?fn(p):fn); setSaved(false); },[]);
   const tog = k => setOpen(p=>({...p,[k]:!p[k]}));
@@ -396,21 +418,26 @@ function App() {
     const u={...allData,[day.date]:day}; setAllData(u); saveData(u);
     setSaved(true); setTimeout(()=>setSaved(false),2000);
   };
-
+ 
   if(!day) return <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", color:C.muted }}>טוענת...</div>;
-
+ 
   const tp=Object.values(day.meals).reduce((s,m)=>s+(Number(m.protein)||0),0);
   const tc=Object.values(day.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0);
   const tf=Object.values(day.meals).reduce((s,m)=>s+(Number(m.fat)||0),0);
-
+ 
   return (
     <div style={{ minHeight:"100vh", width:"100%", background:C.bg, fontFamily:"Georgia, serif", direction:"rtl" }}>
       <div style={{ background:`linear-gradient(135deg,${C.green} 0%,${C.greenD} 100%)`, padding:"18px 20px 16px", color:"#fff" }}>
-        <div style={{ fontSize:10, opacity:0.75, letterSpacing:1, marginBottom:2 }}>יום {daysSince(TREATMENT_START)} בטיפול</div>
-        <div style={{ fontSize:20, fontWeight:700 }}>{formatDate(day.date)}</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+          <div>
+            <div style={{ fontSize:10, opacity:0.75, letterSpacing:1, marginBottom:2 }}>יום {daysSince(TREATMENT_START)} בטיפול</div>
+            <div style={{ fontSize:20, fontWeight:700 }}>{formatDate(day.date)}</div>
+          </div>
+          {view==="daily"&&<DatePicker currentDate={day.date} onDateChange={newDate=>{ const data=loadData(); setDay(data[newDate]||{...defaultDay(), date:newDate}); setSaved(false); }} />}
+        </div>
         {view==="daily"&&<HeaderBar protein={tp} carbs={tc} fat={tf} kcalBurned={day.activity.kcalBurned} />}
       </div>
-
+ 
       <div style={{ display:"flex", background:C.card, borderBottom:`1px solid ${C.border}` }}>
         {[["daily","יומי"],["weekly","שבועי"],["monthly","חודשי"]].map(([k,l])=>(
           <button key={k} onClick={()=>setView(k)}
@@ -419,7 +446,7 @@ function App() {
           </button>
         ))}
       </div>
-
+ 
       <div style={{ padding:"16px 16px 100px" }}>
         {view==="weekly"&&<WeeklyView allData={allData} />}
         {view==="monthly"&&<MonthlyView allData={allData} />}
@@ -452,7 +479,7 @@ function App() {
               </div>
             </>)}
           </Card>
-
+ 
           <Card>
             <SecHeader title="ארוחות" emoji="🥗" open={open.meals} onToggle={()=>tog("meals")} />
             {open.meals&&(<>
@@ -460,7 +487,7 @@ function App() {
               {MEAL_KEYS.map(key=>(<MealBlock key={key} meal={day.meals[key]} mealKey={key} onChange={m=>update(p=>({...p,meals:{...p.meals,[key]:m}}))} />))}
             </>)}
           </Card>
-
+ 
           <Card>
             <SecHeader title="פעילות גופנית" emoji="🏋️" open={open.activity} onToggle={()=>tog("activity")} />
             {open.activity&&(<>
@@ -471,15 +498,16 @@ function App() {
                     style={{ padding:"5px 11px", borderRadius:20, border:"none", cursor:"pointer", fontSize:12, fontWeight:500, background:day.activity.type===t?C.green:C.bg, color:day.activity.type===t?"#fff":C.soft, marginBottom:4 }}>{t}</button>))}
                 </div>
               </div>
-              <Grid cols={2}>
+              <Grid cols={3}>
                 <div><Lbl>משך</Lbl><Num value={day.activity.duration} onChange={v=>update(p=>({...p,activity:{...p.activity,duration:v}}))} unit="דק׳" wide /></div>
-                <div><Lbl>קלוריות שרופות (שעון)</Lbl><Num value={day.activity.kcalBurned} onChange={v=>update(p=>({...p,activity:{...p.activity,kcalBurned:v}}))} unit="kcal" wide /></div>
+                <div><Lbl>קלוריות שרופות</Lbl><Num value={day.activity.kcalBurned} onChange={v=>update(p=>({...p,activity:{...p.activity,kcalBurned:v}}))} unit="kcal" wide /></div>
+                <div><Lbl>דופק ממוצע</Lbl><Num value={day.activity.avgHR} onChange={v=>update(p=>({...p,activity:{...p.activity,avgHR:v}}))} unit="bpm" wide /></div>
               </Grid>
               <Lbl>הערות</Lbl>
               <TA value={day.activity.notes} onChange={v=>update(p=>({...p,activity:{...p.activity,notes:v}}))} placeholder="איך הרגשת, מה עבדת..." />
             </>)}
           </Card>
-
+ 
           <Card>
             <SecHeader title="סגירת יום – לפני שינה" emoji="🌙" open={open.evening} onToggle={()=>tog("evening")} />
             {open.evening&&(<>
@@ -501,7 +529,7 @@ function App() {
           </Card>
         </>)}
       </div>
-
+ 
       {view==="daily"&&(
         <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"10px 16px 14px", background:C.card, borderTop:`1px solid ${C.border}` }}>
           <button onClick={handleSave}
@@ -513,7 +541,7 @@ function App() {
     </div>
   );
 }
-
+ 
 function Root() {
   const [hasKey, setHasKey] = React.useState(!!localStorage.getItem("shari_api_key"));
   if (!hasKey) return <ApiKeySetup onSave={() => setHasKey(true)} />;
