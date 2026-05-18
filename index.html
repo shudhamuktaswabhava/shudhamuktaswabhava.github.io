@@ -79,6 +79,7 @@ function defaultDay() {
   return {
     date: todayKey(),
     sleep: { samsungScore:"", deepMin:"", restingHR:"", start:"", end:"" },
+    bodyMeasure: { weight:"", waist:"" },
     rituals: { water:false, electrolytes:false, sun:false, collagen:false },
     morningBaseline: { hrv:"", energyPct:"", stressPct:"", energySubjective:5 },
     eveningReading: { hrv:"", energyPct:"", stressPct:"" },
@@ -438,9 +439,16 @@ function WeeklyView({ allData }) {
   const kcal=days.map(d=>d.meals?calcKcal(Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.fat)||0),0))||null:null);
   const protein=days.map(d=>d.meals?Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0)||null:null);
   const score=days.map(d=>d.dayScore||null);
+  const weight=days.map(d=>d.bodyMeasure?.weight?Number(d.bodyMeasure.weight):null);
+  const waist=days.map(d=>d.bodyMeasure?.waist?Number(d.bodyMeasure.waist):null);
   const mealDiffs=MEAL_KEYS.map(mk=>({ label:MEAL_LABELS[mk], data:days.map(d=>{ const m=d.meals?.[mk]; if(!m?.hrvBefore||!m?.hrvAfter) return null; return Number(m.hrvAfter)-Number(m.hrvBefore); }) }));
   return (
     <div>
+      <Card>
+        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>גוף</div>
+        <LineChart data={weight} labels={labels} color={C.peach} title="משקל" unit=" ק״ג" />
+        <LineChart data={waist} labels={labels} color={C.gold} title="היקף מותניים" unit=" ס״מ" />
+      </Card>
       <Card>
         <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>מדדים שבועיים</div>
         <LineChart data={hrv} labels={labels} color={C.green} title="HRV בוקר" />
@@ -490,6 +498,8 @@ function MonthlyView({ allData }) {
   const hrv=days.map(d=>d.morningBaseline?.hrv||null);
   const kcal=days.map(d=>d.meals?calcKcal(Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.fat)||0),0))||null:null);
   const score=days.map(d=>d.dayScore||null);
+  const weight=days.map(d=>d.bodyMeasure?.weight?Number(d.bodyMeasure.weight):null);
+  const waist=days.map(d=>d.bodyMeasure?.waist?Number(d.bodyMeasure.waist):null);
   const weeks=[];
   for(let i=0;i<days.length;i+=7){
     const ch=days.slice(i,i+7);
@@ -501,6 +511,11 @@ function MonthlyView({ allData }) {
   }
   return (
     <div>
+      <Card>
+        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>גוף – 30 יום</div>
+        <LineChart data={weight} labels={labels} color={C.peach} title="משקל" unit=" ק״ג" />
+        <LineChart data={waist} labels={labels} color={C.gold} title="היקף מותניים" unit=" ס״מ" />
+      </Card>
       <Card>
         <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>30 יום</div>
         <LineChart data={hrv} labels={labels} color={C.green} title="HRV בוקר" />
@@ -600,6 +615,8 @@ function App() {
             <SecHeader title="פתיחת יום – לילה שעבר" emoji="🌅" open={open.morning} onToggle={()=>tog("morning")} />
             {open.morning&&(<>
               <div style={{ fontSize:11, color:C.muted, marginBottom:10, background:C.greenL, borderRadius:8, padding:"6px 10px" }}>נתוני הלילה שעבר + baseline לפני קפה ואכילה</div>
+              <div style={{ fontSize:13, fontWeight:700, color:C.soft, marginBottom:8 }}>📏 מדידות בוקר (בצום, לפני שתייה)</div>
+              <Grid cols={2} mb={14}><div><Lbl>משקל</Lbl><Num value={day.bodyMeasure?.weight||""} onChange={v=>update(p=>({...p,bodyMeasure:{...p.bodyMeasure,weight:v}}))} unit="ק״ג" wide /></div><div><Lbl>היקף מותניים</Lbl><Num value={day.bodyMeasure?.waist||""} onChange={v=>update(p=>({...p,bodyMeasure:{...p.bodyMeasure,waist:v}}))} unit="ס״מ" wide /></div></Grid>
               <div style={{ fontSize:13, fontWeight:700, color:C.soft, marginBottom:8 }}>שינה</div>
               <Grid cols={2}><div><Lbl>שעת שינה</Lbl><TF value={day.sleep.start} onChange={v=>update(p=>({...p,sleep:{...p.sleep,start:v}}))} /></div><div><Lbl>שעת קימה</Lbl><TF value={day.sleep.end} onChange={v=>update(p=>({...p,sleep:{...p.sleep,end:v}}))} /></div></Grid>
               <Grid cols={3}>
