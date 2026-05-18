@@ -84,7 +84,7 @@ function defaultDay() {
     eveningReading: { hrv:"", energyPct:"", stressPct:"" },
     meals: { breakfast:defaultMeal(), lunch:defaultMeal(), dinner:defaultMeal(), snack:defaultMeal() },
     activity: { type:"", duration:"", kcalBurned:"", avgHR:"", notes:"" },
-    symptoms: Object.fromEntries(SYMPTOM_KEYS.map(k=>[k,false])),
+    symptoms: Object.fromEntries(SYMPTOM_KEYS.map(k=>[k,0])),
     notes:"", dayScore:5,
   };
 }
@@ -145,18 +145,18 @@ function HeaderBar({ protein, carbs, fat, kcalBurned }) {
   const kcalIn = calcKcal(protein, carbs, fat);
   const net = kcalIn - (Number(kcalBurned)||0);
   const items = [
-    { label:"חלבון", val:protein, goal:90, color:C.green, unit:"g" },
-    { label:"פחמימות", val:carbs, goal:120, color:C.gold, unit:"g" },
-    { label:"שומן", val:fat, goal:45, color:C.lav, unit:"g" },
+    { label:"חלבון", val:protein, goal:120, min:90, color:C.green, unit:"g" },
+    { label:"פחמימות", val:carbs, goal:80, min:70, color:C.gold, unit:"g" },
+    { label:"שומן", val:fat, goal:45, min:40, color:C.lav, unit:"g" },
   ];
   return (
     <div style={{ marginTop:12 }}>
       <div style={{ display:"flex", gap:8 }}>
-        {items.map(({label,val,goal,color,unit})=>(
+        {items.map(({label,val,goal,min,color,unit})=>(
           <div key={label} style={{ flex:1, background:"rgba(255,255,255,0.15)", borderRadius:12, padding:"7px 8px", textAlign:"center" }}>
             <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", marginBottom:3 }}>{label}</div>
             <div style={{ height:4, background:"rgba(255,255,255,0.2)", borderRadius:2, marginBottom:4, overflow:"hidden" }}>
-              <div style={{ height:"100%", width:`${Math.min(100,(val/goal)*100)}%`, background:val>goal*1.15?C.peach:"#fff", borderRadius:2 }} />
+              <div style={{ height:"100%", width:`${Math.min(100,(val/goal)*100)}%`, background:val>goal*1.1?C.peach:val<min&&val>0?"#ffd580":"#fff", borderRadius:2 }} />
             </div>
             <div style={{ fontSize:15, fontWeight:800, color:"#fff" }}>{val}<span style={{ fontSize:9, fontWeight:400 }}>{unit}</span></div>
           </div>
@@ -268,8 +268,8 @@ function LineChart({ data, labels, color, title, unit="" }) {
   const valid = data.filter(v=>v!==null&&v!==undefined&&v!=="");
   if (valid.length<2) return <div style={{ fontSize:12, color:C.muted, padding:"4px 0 14px" }}>אין מספיק נתונים עדיין</div>;
   const nums=valid.map(Number), min=Math.min(...nums), max=Math.max(...nums), range=max-min||1;
-  const W=300, H=60;
-  const pts=data.map((v,i)=>{ if(v===null||v===""||v===undefined) return null; return { x:(i/(data.length-1))*W, y:H-((Number(v)-min)/range)*(H-12) }; });
+  const W=300, H=60, PX=22;
+  const pts=data.map((v,i)=>{ if(v===null||v===""||v===undefined) return null; return { x:PX+(i/(data.length-1))*(W-2*PX), y:H-((Number(v)-min)/range)*(H-12) }; });
   const path=pts.filter(Boolean).map((p,i)=>`${i===0?"M":"L"} ${p.x} ${p.y}`).join(" ");
   return (
     <div style={{ marginBottom:20 }}>
@@ -286,7 +286,145 @@ function LineChart({ data, labels, color, title, unit="" }) {
   );
 }
 
-function WeeklyView({ allData }) {
+function SymptomIntensity({ label, value, onChange }) {
+  const numVal = typeof value === 'boolean' ? (value ? 3 : 0) : (Number(value) || 0);
+  const colors = ["none","#fdf0d0","#fde4aa","#f5c07a","#e8925a",C.peach];
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
+      <span style={{ fontSize:12, color:C.soft, minWidth:72, textAlign:"right" }}>{label}</span>
+      <div style={{ display:"flex", gap:3 }}>
+        {[0,1,2,3,4,5].map(v=>(
+          <button key={v} onClick={()=>onChange(v)}
+            style={{ width:26, height:26, borderRadius:"50%", border:`2px solid ${numVal===v?C.greenD:C.border}`, cursor:"pointer",
+              background:v===0?(numVal===0?C.greenL:C.bg):v<=numVal?colors[v]:C.bg,
+              fontSize:9, fontWeight:800, color:v===0&&numVal===0?C.greenD:v<=numVal&&v>0?"#fff":C.muted, transition:"all 0.15s" }}>
+            {v===0?"✓":v}
+          </button>
+        ))}
+      </div>
+      {numVal>0&&<span style={{ fontSize:10, color:numVal>=4?C.peach:numVal>=2?C.gold:C.soft, fontWeight:600 }}>{numVal>=5?"חזק מאוד":numVal>=4?"חזק":numVal>=3?"בינוני":numVal>=2?"קל":"מינימלי"}</span>}
+    </div>
+  );
+}
+
+const MEDICAL_SYSTEM_PROMPT = `את יועצת בריאות אישית של שרי לוי. מלווה אותה בתוכנית הרפואית שלה. ענה תמיד בעברית בשפה תומכת ומעשית. תני הסברים רפואיים ברורים כשרלוונטי.
+
+**רקע רפואי:**
+פוסטמנופאוזה – הורמונים בטווח נורמלי לגיל.
+קורטיזול (DUTCH): נמוך בהתעוררות, פיק אחרי שעתיים, ואז נפילה. Metabolized Cortisol גבוה (6547) – ייצור גבוה אבל שימוש לא יעיל. Cortisol Clearance Rate >96% – פינוי מהיר מדי. DHEA תקין. חסר B6 פונקציונלי.
+עומס חמצוני גבוה (7): Lipid Peroxides ו-8-OHdG מוגברים. חסרים: ויטמין A, C, E (ציון 6), ALA (8), Glutathione (7), B1 (7), B6 (7), B2 (4), Magnesium (6), Manganese (6). חשיפה לרעלים: Styrene ו-MTBE (ציון 4).
+GI MAP: H. pylori גבוה (2.33e3) – עמיד לקלריתרומיצין. Lactobacillus נמוך. SIgA נמוך (371). Firmicutes גבוה. Zonulin 103.3 – מעי דליף קל. Calprotectin 1 – אין דלקת.
+דם: LDL 153, TG 125 (שיפור מ-200), Chol 232 (שיפור מ-259), Uric Acid 6.9 (מעל), HbA1c 5.15, Insulin 10.6, Vit D 33.1.
+
+**שלבי הטיפול:**
+שלב 1 (עכשיו, 2 חודשים): ציר סטרס – Energymaca, Multivitamin, Diabenil, Stress Balance, Magnesium, B-Complex
+שלב 2: H. pylori | שלב 3: מיקרוביום | שלב 4: שיקום מעי | שלב 5: כבד + נוגדי חמצון
+
+**תזונה:**
+חלבון: 30-40g/ארוחה, 90-120g/יום. פחמימות: 0 בבוקר, אופציונלי בצהריים, 30-40g בערב. שומן: כף/ארוחה – שומנים טובים בלבד. אסור: סוכר, פחמימות פשוטות, שמני זרעים. מומלץ: ירוקים כהים, צבעוניים, נוגדי חמצון. שתייה: 2.5-3L/יום.`;
+
+function AIChat({ day, allData, onClose }) {
+  const [messages, setMessages] = React.useState([]);
+  const [input, setInput] = React.useState("");
+  const [loading, setLoading] = React.useState(false);
+  const [autoOpened, setAutoOpened] = React.useState(false);
+  const endRef = React.useRef(null);
+
+  const buildContext = React.useCallback(() => {
+    const tp=Object.values(day.meals).reduce((s,m)=>s+(Number(m.protein)||0),0);
+    const tc=Object.values(day.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0);
+    const tf=Object.values(day.meals).reduce((s,m)=>s+(Number(m.fat)||0),0);
+    const meals=MEAL_KEYS.map(k=>{ const m=day.meals[k]; if(!m.description) return null; return `${MEAL_LABELS[k]}: ${m.description} (חלבון ${m.protein}g, פחמימות ${m.carbs}g, שומן ${m.fat}g)`; }).filter(Boolean).join("\n");
+    const syms=SYMPTOM_KEYS.filter(k=>(typeof day.symptoms[k]==='boolean'?day.symptoms[k]:day.symptoms[k]>0)).map(k=>{ const v=typeof day.symptoms[k]==='boolean'?3:day.symptoms[k]; return `${SYMPTOM_LABELS[k]}: ${v}/5`; }).join(", ");
+    const recent=Object.values(allData).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
+    const hrvArr=recent.map(d=>Number(d.morningBaseline?.hrv)).filter(Boolean);
+    const avgHrv=hrvArr.length?Math.round(hrvArr.reduce((a,b)=>a+b)/hrvArr.length):null;
+    return `\n\n**נתוני היום – ${formatDate(day.date)} (יום ${daysSince(TREATMENT_START)} בטיפול):**
+שינה: ציון ${day.sleep.samsungScore||"—"}, עמוקה ${day.sleep.deepMin||"—"} דק', HR מנוחה ${day.sleep.restingHR||"—"} bpm
+HRV בוקר: ${day.morningBaseline?.hrv||"—"} | אנרגיה: ${day.morningBaseline?.energyPct||"—"}% | סטרס: ${day.morningBaseline?.stressPct||"—"}% | אנרגיה סובייקטיבית: ${day.morningBaseline?.energySubjective||"—"}/10
+${meals?`ארוחות:\n${meals}`:"ארוחות: לא הוזנו"}
+סה"כ: חלבון ${tp}g | פחמימות ${tc}g | שומן ${tf}g | ${calcKcal(tp,tc,tf)} kcal
+${day.activity?.type?`פעילות: ${day.activity.type}, ${day.activity.duration} דק', ${day.activity.kcalBurned||"—"} kcal`:"פעילות: לא בוצעה"}
+HRV ערב: ${day.eveningReading?.hrv||"—"} | ציון יום: ${day.dayScore||"—"}/10
+תסמינים: ${syms||"אין"}${day.notes?`\nהערות: ${day.notes}`:""}${avgHrv?`\nממוצע HRV שבוע אחרון: ${avgHrv}`:""}`;
+  },[day,allData]);
+
+  const sendMsg = React.useCallback(async (text, isAuto=false, currentMsgs) => {
+    const userMsg = { role:"user", content:text };
+    const baseMsgs = currentMsgs || messages;
+    const newMsgs = isAuto ? [userMsg] : [...baseMsgs, userMsg];
+    setMessages(newMsgs);
+    setInput("");
+    setLoading(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST",
+        headers:{"Content-Type":"application/json","x-api-key":localStorage.getItem("shari_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body:JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:1000, system:MEDICAL_SYSTEM_PROMPT+buildContext(), messages:newMsgs })
+      });
+      const data = await res.json();
+      const reply = data.content?.[0]?.text || "מצטערת, לא הצלחתי לענות.";
+      setMessages(prev=>[...prev,{ role:"assistant", content:reply }]);
+    } catch(e) {
+      setMessages(prev=>[...prev,{ role:"assistant", content:"שגיאה בחיבור. בדקי את מפתח ה-API." }]);
+    }
+    setLoading(false);
+  },[messages, buildContext]);
+
+  React.useEffect(()=>{ if(!autoOpened){ setAutoOpened(true); sendMsg("תני לי סיכום קצר של היום – מה הלך טוב, מה אפשר לשפר, והמלצה אחת לערב.", true); } },[]);
+  React.useEffect(()=>{ endRef.current?.scrollIntoView({behavior:"smooth"}); },[messages,loading]);
+
+  const handleSend = ()=>{ if(input.trim()&&!loading) sendMsg(input.trim(), false, messages); };
+
+  const quickQ = ["מה לאכול לארוחת ערב?","הסבר על הקורטיזול שלי","מה ה-HRV אומר?","ממה להיזהר מחר?"];
+
+  return (
+    <div style={{ position:"fixed", inset:0, zIndex:2000, background:"rgba(0,0,0,0.45)", display:"flex", flexDirection:"column" }}>
+      <div style={{ flex:1, background:C.bg, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+        <div style={{ background:`linear-gradient(135deg,${C.green},${C.greenD})`, padding:"14px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", flexShrink:0 }}>
+          <div>
+            <div style={{ fontSize:16, fontWeight:700, color:"#fff" }}>🌿 יועץ בריאות אישי</div>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.7)" }}>יום {daysSince(TREATMENT_START)} בטיפול · {formatDate(day.date)}</div>
+          </div>
+          <button onClick={onClose} style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:8, padding:"7px 12px", color:"#fff", cursor:"pointer", fontSize:15, fontWeight:700 }}>✕</button>
+        </div>
+        <div style={{ flex:1, overflowY:"auto", padding:"14px 14px 4px" }}>
+          {messages.map((m,i)=>(
+            <div key={i} style={{ marginBottom:10, display:"flex", justifyContent:m.role==="user"?"flex-start":"flex-end" }}>
+              <div style={{ maxWidth:"88%", padding:"10px 13px", borderRadius:m.role==="user"?"4px 14px 14px 14px":"14px 4px 14px 14px",
+                background:m.role==="user"?C.card:C.greenL, color:C.text, fontSize:13, lineHeight:1.6,
+                boxShadow:"0 1px 4px rgba(0,0,0,0.07)", whiteSpace:"pre-wrap" }}>
+                {m.content}
+              </div>
+            </div>
+          ))}
+          {loading&&<div style={{ display:"flex", justifyContent:"flex-end", marginBottom:10 }}>
+            <div style={{ background:C.greenL, borderRadius:"14px 4px 14px 14px", padding:"10px 14px", color:C.green, fontSize:13 }}>✦ חושבת...</div>
+          </div>}
+          <div ref={endRef} />
+        </div>
+        <div style={{ padding:"6px 14px 4px", display:"flex", gap:5, overflowX:"auto", flexShrink:0 }}>
+          {quickQ.map(q=>(
+            <button key={q} onClick={()=>sendMsg(q, false, messages)} disabled={loading}
+              style={{ whiteSpace:"nowrap", padding:"5px 10px", background:C.greenL, color:C.greenD, border:`1px solid ${C.green}`, borderRadius:16, fontSize:11, cursor:"pointer", fontWeight:600, flexShrink:0 }}>
+              {q}
+            </button>
+          ))}
+        </div>
+        <div style={{ padding:"8px 14px 20px", display:"flex", gap:8, flexShrink:0 }}>
+          <textarea value={input} onChange={e=>setInput(e.target.value)}
+            onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();handleSend();} }}
+            placeholder="שאלי כל שאלה..." rows={2}
+            style={{ flex:1, padding:"9px 12px", border:`1.5px solid ${C.border}`, borderRadius:12, fontSize:13, background:C.card, color:C.text, outline:"none", resize:"none", fontFamily:"inherit" }} />
+          <button onClick={handleSend} disabled={loading||!input.trim()}
+            style={{ padding:"0 16px", background:loading||!input.trim()?C.border:C.greenD, color:"#fff", border:"none", borderRadius:12, cursor:"pointer", fontSize:20, fontWeight:700, alignSelf:"stretch", minWidth:46 }}>↑</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
   const days=Object.values(allData).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
   if (days.length<2) return <Card><div style={{ textAlign:"center", padding:24, color:C.muted, fontSize:14 }}><div style={{ fontSize:32, marginBottom:10 }}>🌱</div><div>צריך לפחות יומיים של נתונים.</div></div></Card>;
   const labels=days.map(d=>d.date.slice(5));
@@ -330,7 +468,7 @@ function WeeklyView({ allData }) {
             </tr></thead>
             <tbody>{SYMPTOM_KEYS.map(s=>(<tr key={s}>
               <td style={{ padding:"4px 6px", color:C.soft, fontWeight:500, whiteSpace:"nowrap" }}>{SYMPTOM_LABELS[s]}</td>
-              {days.map((d,i)=>(<td key={i} style={{ padding:"4px 6px", textAlign:"center" }}><div style={{ width:18, height:18, borderRadius:5, background:d.symptoms?.[s]?C.peach:C.greenL, margin:"auto" }} /></td>))}
+              {days.map((d,i)=>{ const raw=d.symptoms?.[s]; const v=typeof raw==='boolean'?(raw?3:0):(Number(raw)||0); return (<td key={i} style={{ padding:"4px 6px", textAlign:"center" }}><div style={{ width:20, height:20, borderRadius:5, background:v===0?C.greenL:v<=2?"#fde4aa":v<=4?"#e8925a":C.peach, margin:"auto", display:"flex", alignItems:"center", justifyContent:"center" }}>{v>0&&<span style={{ fontSize:8, fontWeight:800, color:"#fff" }}>{v}</span>}</div></td>);})}
             </tr>))}</tbody>
           </table>
         </div>
@@ -410,6 +548,7 @@ function App() {
   const [day, setDay] = useState(null);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState({ morning:true, meals:true, activity:false, evening:false });
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(()=>{ const data=loadData(); setAllData(data); const key=todayKey(); setDay(data[key]||defaultDay()); },[]);
   const update = useCallback(fn=>{ setDay(p=>typeof fn==="function"?fn(p):fn); setSaved(false); },[]);
@@ -518,9 +657,9 @@ function App() {
                 <div><Lbl>אנרגיה</Lbl><Num value={day.eveningReading?.energyPct||""} unit="%" onChange={v=>update(p=>({...p,eveningReading:{...p.eveningReading,energyPct:v}}))} /></div>
                 <div><Lbl>סטרס</Lbl><Num value={day.eveningReading?.stressPct||""} unit="%" onChange={v=>update(p=>({...p,eveningReading:{...p.eveningReading,stressPct:v}}))} /></div>
               </Grid>
-              <Lbl>תסמינים</Lbl>
-              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14 }}>
-                {SYMPTOM_KEYS.map(k=>(<Pill key={k} active={day.symptoms[k]} onToggle={()=>update(p=>({...p,symptoms:{...p.symptoms,[k]:!p.symptoms[k]}}))} label={SYMPTOM_LABELS[k]} />))}
+              <Lbl>תסמינים (עצימות 0–5)</Lbl>
+              <div style={{ marginBottom:14 }}>
+                {SYMPTOM_KEYS.map(k=>(<SymptomIntensity key={k} label={SYMPTOM_LABELS[k]} value={day.symptoms[k]} onChange={v=>update(p=>({...p,symptoms:{...p.symptoms,[k]:v}}))} />))}
               </div>
               <Lbl>הערות יומיות</Lbl>
               <TA value={day.notes} onChange={v=>update(p=>({...p,notes:v}))} placeholder="מה חשוב לזכור מהיום..." rows={3} />
@@ -531,13 +670,18 @@ function App() {
       </div>
 
       {view==="daily"&&(
-        <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"10px 16px 14px", background:C.card, borderTop:`1px solid ${C.border}` }}>
+        <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"10px 16px 14px", background:C.card, borderTop:`1px solid ${C.border}`, display:"flex", gap:8 }}>
+          <button onClick={()=>setChatOpen(true)}
+            style={{ flex:"0 0 auto", padding:"14px 16px", background:`linear-gradient(135deg,${C.green},${C.greenD})`, color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+            🌿 יועץ
+          </button>
           <button onClick={handleSave}
-            style={{ width:"100%", padding:14, background:saved?C.green:C.greenD, color:"#fff", border:"none", borderRadius:14, fontSize:16, fontWeight:700, cursor:"pointer" }}>
+            style={{ flex:1, padding:14, background:saved?C.green:C.greenD, color:"#fff", border:"none", borderRadius:14, fontSize:16, fontWeight:700, cursor:"pointer" }}>
             {saved?"✓ נשמר!":"שמור יום"}
           </button>
         </div>
       )}
+      {chatOpen&&<AIChat day={day} allData={allData} onClose={()=>setChatOpen(false)} />}
     </div>
   );
 }
