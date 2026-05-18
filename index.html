@@ -393,7 +393,7 @@ function DatePicker({ currentDate, onDateChange }) {
         {currentDate === today ? "היום" : formatDate(currentDate)} {showPicker?"▲":"▼"}
       </button>
       {showPicker&&(
-        <div style={{ position:"absolute", top:"100%", right:0, background:"#fff", borderRadius:12, padding:12, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:100, marginTop:4 }}>
+        <div style={{ position:"absolute", top:"100%", left:0, background:"#fff", borderRadius:12, padding:12, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:100, marginTop:4 }}>
           <div style={{ fontSize:12, color:"#b0a898", marginBottom:8 }}>בחרי תאריך</div>
           <input type="date" defaultValue={currentDate} max={today}
             onChange={e=>{ onDateChange(e.target.value); setShowPicker(false); }}
