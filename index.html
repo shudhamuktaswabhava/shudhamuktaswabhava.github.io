@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html dir="rtl" lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מעקב בריאות – שרי</title>
+<script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+<script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: #f4f1ec; font-family: Georgia, serif; direction: rtl; }
+input[type=range] { width: 100%; }
+textarea { font-family: Georgia, serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const API_KEY = localStorage.getItem("shari_api_key") || "";
+
+function ApiKeySetup({ onSave }) {
+  const [key, setKey] = React.useState("");
+  return (
+    <div style={{ minHeight:"100vh", background:"#f4f1ec", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ background:"#fff", borderRadius:20, padding:32, maxWidth:400, width:"100%", boxShadow:"0 4px 20px rgba(0,0,0,0.1)", textAlign:"center" }}>
+        <div style={{ fontSize:40, marginBottom:16 }}>🌿</div>
+        <div style={{ fontSize:20, fontWeight:700, color:"#2d2520", marginBottom:8 }}>מעקב בריאות – שרי</div>
+        <div style={{ fontSize:13, color:"#b0a898", marginBottom:24 }}>הכניסי את מפתח ה-API שלך להפעלה</div>
+        <input type="password" value={key} onChange={e=>setKey(e.target.value)}
+          placeholder="sk-ant-api03-..."
+          style={{ width:"100%", padding:"10px 14px", border:"1.5px solid #e5e0d8", borderRadius:10, fontSize:13, outline:"none", marginBottom:16, boxSizing:"border-box", direction:"ltr" }} />
+        <button onClick={()=>{ if(key.trim()){ localStorage.setItem("shari_api_key", key.trim()); onSave(); }}}
+          style={{ width:"100%", padding:14, background:"#4a7058", color:"#fff", border:"none", borderRadius:12, fontSize:15, fontWeight:700, cursor:"pointer" }}>
+          כניסה
+        </button>
+        <div style={{ fontSize:11, color:"#b0a898", marginTop:12 }}>המפתח נשמר בדפדפן שלך בלבד ולא מועלה לשום מקום</div>
+      </div>
+    </div>
+  );
+}
+const STORAGE_KEY = "shari_health_v5";
+const TREATMENT_START = "2026-05-17";
+
+function daysSince(start) {
+  const s = new Date(start), n = new Date();
+  return Math.max(1, Math.floor((n - s) / 86400000) + 1);
+}
+function todayKey() { return new Date().toISOString().split("T")[0]; }
+function formatDate(iso) { const [y,m,d]=iso.split("-"); return `${d}.${m}.${y}`; }
+function loadData() { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)||"{}"); } catch { return {}; } }
+function saveData(d) { try { localStorage.setItem(STORAGE_KEY,JSON.stringify(d)); } catch {} }
+function calcKcal(p,c,f) { return Math.round((Number(p)||0)*4+(Number(c)||0)*4+(Number(f)||0)*9); }
+
+const MEAL_KEYS = ["breakfast","lunch","dinner","snack"];
+const MEAL_LABELS = { breakfast:"ארוחת בוקר", lunch:"ארוחת צהריים", dinner:"ארוחת ערב", snack:"נשנוש" };
+const MEAL_EMOJI = { breakfast:"🌅", lunch:"☀️", dinner:"🌙", snack:"🍎" };
+const SYMPTOM_KEYS = ["bloating","itching","brainFog","headache","fatigue","poorDigestion","poorSleep"];
+const SYMPTOM_LABELS = { bloating:"נפיחות", itching:"גרד", brainFog:"ערפל", headache:"כאב ראש", fatigue:"עייפות", poorDigestion:"עיכול", poorSleep:"שינה קשה" };
+const ACTIVITY_TYPES = ["אימון כוח","הליכה","ריצה","יוגה","שחייה","אופניים","אחר"];
+
+const C = {
+  green:"#6b9977", greenL:"#e8f2ec", greenD:"#4a7058",
+  peach:"#d4715a", peachL:"#fdf0ec",
+  gold:"#c4a26b", goldL:"#fdf6ec",
+  lav:"#9b8ec4", lavL:"#f0eef8",
+  bg:"#f4f1ec", card:"#fff", border:"#e5e0d8",
+  text:"#2d2520", soft:"#7a6e66", muted:"#b0a898",
+};
+
+function defaultMeal() {
+  return { time:"", description:"", protein:0, carbs:0, fat:0,
+    darkGreen:false, colorVeg:false, antioxidant:false, digestion:5,
+    hrvBefore:"", energyBefore:"", stressBefore:"",
+    hrvAfter:"", energyAfter:"", stressAfter:"" };
+}
+function defaultDay() {
+  return {
+    date: todayKey(),
+    sleep: { samsungScore:"", deepMin:"", restingHR:"", start:"", end:"" },
+    rituals: { water:false, electrolytes:false, sun:false, collagen:false },
+    morningBaseline: { hrv:"", energyPct:"", stressPct:"", energySubjective:5 },
+    eveningReading: { hrv:"", energyPct:"", stressPct:"" },
+    meals: { breakfast:defaultMeal(), lunch:defaultMeal(), dinner:defaultMeal(), snack:defaultMeal() },
+    activity: { type:"", duration:"", kcalBurned:"", notes:"" },
+    symptoms: Object.fromEntries(SYMPTOM_KEYS.map(k=>[k,false])),
+    notes:"", dayScore:5,
+  };
+}
+
+const { useState, useEffect, useCallback } = React;
+
+function Card({ children, style={} }) {
+  return <div style={{ background:C.card, borderRadius:16, padding:"14px 16px", marginBottom:12, boxShadow:"0 1px 6px rgba(0,0,0,0.06)", ...style }}>{children}</div>;
+}
+function SecHeader({ title, emoji, open, onToggle }) {
+  return (
+    <button onClick={onToggle} style={{ width:"100%", display:"flex", justifyContent:"space-between", alignItems:"center", background:"none", border:"none", cursor:"pointer", padding:"2px 0 10px" }}>
+      <span style={{ fontSize:15, fontWeight:700, color:C.text }}>{emoji} {title}</span>
+      <span style={{ fontSize:11, color:C.muted, transform:open?"rotate(180deg)":"none", transition:"0.2s" }}>▼</span>
+    </button>
+  );
+}
+function Pill({ active, onToggle, label }) {
+  return (
+    <button onClick={onToggle} style={{ padding:"5px 11px", borderRadius:20, border:"none", cursor:"pointer", fontSize:12, fontWeight:500, background:active?C.green:C.bg, color:active?"#fff":C.soft, transition:"all 0.2s", display:"inline-flex", alignItems:"center", gap:4, marginBottom:4 }}>
+      {active?"✓":"○"} {label}
+    </button>
+  );
+}
+function Slider({ value, onChange, color=C.green }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+      <input type="range" min={1} max={10} value={value} onChange={e=>onChange(+e.target.value)} style={{ flex:1, accentColor:color }} />
+      <span style={{ minWidth:22, textAlign:"center", fontWeight:800, fontSize:15, color }}>{value}</span>
+    </div>
+  );
+}
+function Num({ value, onChange, unit, wide }) {
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:3 }}>
+      <input type="number" value={value||""} placeholder="—" onChange={e=>onChange(e.target.value)}
+        style={{ width:wide?80:58, padding:"5px 6px", border:`1.5px solid ${C.border}`, borderRadius:8, fontSize:13, background:C.bg, color:C.text, outline:"none", textAlign:"center" }} />
+      {unit&&<span style={{ fontSize:10, color:C.muted }}>{unit}</span>}
+    </div>
+  );
+}
+function TF({ value, onChange }) {
+  return <input type="time" value={value} onChange={e=>onChange(e.target.value)}
+    style={{ padding:"5px 7px", border:`1.5px solid ${C.border}`, borderRadius:8, fontSize:13, background:C.bg, color:C.text, outline:"none" }} />;
+}
+function TA({ value, onChange, placeholder, rows=2 }) {
+  return <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder={placeholder} rows={rows}
+    style={{ width:"100%", padding:"8px 10px", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:13, background:C.bg, color:C.text, outline:"none", resize:"vertical", fontFamily:"inherit" }} />;
+}
+function Lbl({ children }) {
+  return <div style={{ fontSize:11, color:C.muted, marginBottom:4, fontWeight:500 }}>{children}</div>;
+}
+function Grid({ cols, gap=10, mb=12, children }) {
+  return <div style={{ display:"grid", gridTemplateColumns:`repeat(${cols},1fr)`, gap, marginBottom:mb }}>{children}</div>;
+}
+
+function HeaderBar({ protein, carbs, fat, kcalBurned }) {
+  const kcalIn = calcKcal(protein, carbs, fat);
+  const net = kcalIn - (Number(kcalBurned)||0);
+  const items = [
+    { label:"חלבון", val:protein, goal:90, color:C.green, unit:"g" },
+    { label:"פחמימות", val:carbs, goal:120, color:C.gold, unit:"g" },
+    { label:"שומן", val:fat, goal:45, color:C.lav, unit:"g" },
+  ];
+  return (
+    <div style={{ marginTop:12 }}>
+      <div style={{ display:"flex", gap:8 }}>
+        {items.map(({label,val,goal,color,unit})=>(
+          <div key={label} style={{ flex:1, background:"rgba(255,255,255,0.15)", borderRadius:12, padding:"7px 8px", textAlign:"center" }}>
+            <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", marginBottom:3 }}>{label}</div>
+            <div style={{ height:4, background:"rgba(255,255,255,0.2)", borderRadius:2, marginBottom:4, overflow:"hidden" }}>
+              <div style={{ height:"100%", width:`${Math.min(100,(val/goal)*100)}%`, background:val>goal*1.15?C.peach:"#fff", borderRadius:2 }} />
+            </div>
+            <div style={{ fontSize:15, fontWeight:800, color:"#fff" }}>{val}<span style={{ fontSize:9, fontWeight:400 }}>{unit}</span></div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display:"flex", gap:8, marginTop:8 }}>
+        <div style={{ flex:1, background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"7px 10px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+          <span style={{ fontSize:11, color:"rgba(255,255,255,0.75)" }}>נאכלו</span>
+          <span style={{ fontSize:15, fontWeight:800, color:"#fff" }}>{kcalIn} <span style={{ fontSize:9 }}>kcal</span></span>
+        </div>
+        {Number(kcalBurned)>0&&<>
+          <div style={{ flex:1, background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"7px 10px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <span style={{ fontSize:11, color:"rgba(255,255,255,0.75)" }}>שרופות</span>
+            <span style={{ fontSize:15, fontWeight:800, color:"#fff" }}>-{kcalBurned} <span style={{ fontSize:9 }}>kcal</span></span>
+          </div>
+          <div style={{ flex:1, background:"rgba(255,255,255,0.12)", borderRadius:10, padding:"7px 10px", display:"flex", justifyContent:"space-between", alignItems:"center" }}>
+            <span style={{ fontSize:11, color:"rgba(255,255,255,0.75)" }}>נטו</span>
+            <span style={{ fontSize:15, fontWeight:800, color:net>1800?"#ffccbc":"#fff" }}>{net} <span style={{ fontSize:9 }}>kcal</span></span>
+          </div>
+        </>}
+      </div>
+    </div>
+  );
+}
+
+function MealBlock({ meal, mealKey, onChange }) {
+  const [loading, setLoading] = useState(false);
+  const [showHRV, setShowHRV] = useState(false);
+  const mealKcal = calcKcal(meal.protein, meal.carbs, meal.fat);
+  const hrvDiff = meal.hrvBefore && meal.hrvAfter ? Number(meal.hrvAfter)-Number(meal.hrvBefore) : null;
+
+  const calcMacro = async () => {
+    if (!meal.description.trim()) return;
+    setLoading(true);
+    try {
+      const res = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST", headers:{"Content-Type":"application/json","x-api-key":localStorage.getItem("shari_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:150,
+          messages:[{ role:"user", content:`חשב מאקרו. ענה רק ב-JSON ללא backticks: {"protein":X,"carbs":X,"fat":X}\nארוחה: ${meal.description}` }] })
+      });
+      const data = await res.json();
+      const parsed = JSON.parse((data.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim());
+      onChange({ ...meal, protein:parsed.protein||0, carbs:parsed.carbs||0, fat:parsed.fat||0 });
+    } catch(e) { alert("שגיאה בחישוב מאקרו. בדקי את מפתח ה-API."); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ background:C.bg, borderRadius:14, padding:14, marginBottom:10 }}>
+      <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:6 }}>
+        <div style={{ display:"flex", alignItems:"center", gap:6, flexWrap:"wrap" }}>
+          <span style={{ fontSize:16 }}>{MEAL_EMOJI[mealKey]}</span>
+          <span style={{ fontWeight:700, fontSize:14, color:C.text }}>{MEAL_LABELS[mealKey]}</span>
+          {mealKcal>0&&<span style={{ fontSize:11, color:C.gold, fontWeight:700, background:C.goldL, borderRadius:8, padding:"2px 7px" }}>{mealKcal} kcal</span>}
+          {hrvDiff!==null&&<span style={{ fontSize:11, fontWeight:700, color:hrvDiff>=0?C.green:C.peach, background:hrvDiff>=0?C.greenL:C.peachL, borderRadius:8, padding:"2px 7px" }}>HRV {hrvDiff>=0?"+":""}{hrvDiff}</span>}
+        </div>
+        <TF value={meal.time} onChange={v=>onChange({...meal,time:v})} />
+      </div>
+      <TA value={meal.description} onChange={v=>onChange({...meal,description:v})} placeholder="תארי את הארוחה..." />
+      <div style={{ display:"flex", alignItems:"center", gap:8, marginTop:8, flexWrap:"wrap" }}>
+        <button onClick={calcMacro} disabled={loading} style={{ padding:"6px 14px", background:loading?C.border:C.green, color:"#fff", border:"none", borderRadius:8, fontSize:13, cursor:"pointer", fontWeight:600 }}>
+          {loading?"מחשב...":"⚡ חשב מאקרו"}
+        </button>
+        {meal.protein>0&&<span style={{ fontSize:12 }}>
+          <span style={{ color:C.green, fontWeight:700 }}>{meal.protein}g</span>{" · "}
+          <span style={{ color:C.gold, fontWeight:700 }}>{meal.carbs}g</span>{" · "}
+          <span style={{ color:C.lav, fontWeight:700 }}>{meal.fat}g</span>
+        </span>}
+      </div>
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap", marginTop:10 }}>
+        <Pill active={meal.darkGreen} onToggle={()=>onChange({...meal,darkGreen:!meal.darkGreen})} label="ירוק כהה" />
+        <Pill active={meal.colorVeg} onToggle={()=>onChange({...meal,colorVeg:!meal.colorVeg})} label="ירק צבעוני" />
+        <Pill active={meal.antioxidant} onToggle={()=>onChange({...meal,antioxidant:!meal.antioxidant})} label="נוגד חמצון" />
+      </div>
+      <div style={{ marginTop:10 }}>
+        <Lbl>תחושת עיכול (90 דק׳ אחרי)</Lbl>
+        <Slider value={meal.digestion} onChange={v=>onChange({...meal,digestion:v})} color={C.gold} />
+      </div>
+      <button onClick={()=>setShowHRV(!showHRV)}
+        style={{ width:"100%", marginTop:10, padding:"6px 0", background:"none", border:`1.5px dashed ${C.border}`, borderRadius:10, cursor:"pointer", fontSize:12, color:C.soft, fontWeight:600 }}>
+        {showHRV?"▲ סגור HRV":"▼ HRV לפני ואחרי הארוחה"}
+      </button>
+      {showHRV&&(
+        <div style={{ marginTop:10 }}>
+          {[{ label:"לפני", hk:"hrvBefore", ek:"energyBefore", sk:"stressBefore", accent:C.soft },
+            { label:"90 דק׳ אחרי", hk:"hrvAfter", ek:"energyAfter", sk:"stressAfter", accent:C.green }
+          ].map(({label,hk,ek,sk,accent})=>(
+            <div key={hk} style={{ background:C.card, borderRadius:10, padding:"10px 12px", marginBottom:8 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:accent, marginBottom:8 }}>{label}</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:8 }}>
+                <div><Lbl>HRV</Lbl><Num value={meal[hk]} onChange={v=>onChange({...meal,[hk]:v})} /></div>
+                <div><Lbl>אנרגיה</Lbl><Num value={meal[ek]} onChange={v=>onChange({...meal,[ek]:v})} unit="%" /></div>
+                <div><Lbl>סטרס</Lbl><Num value={meal[sk]} onChange={v=>onChange({...meal,[sk]:v})} unit="%" /></div>
+              </div>
+            </div>
+          ))}
+          {hrvDiff!==null&&(
+            <div style={{ background:hrvDiff>=0?C.greenL:C.peachL, borderRadius:10, padding:"8px 12px", fontSize:13, color:hrvDiff>=0?C.greenD:C.peach, fontWeight:600, textAlign:"center" }}>
+              שינוי HRV: {hrvDiff>=0?"+":""}{hrvDiff} {hrvDiff>=0?"✓ תגובה חיובית":"⚠ שים לב"}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function LineChart({ data, labels, color, title, unit="" }) {
+  const valid = data.filter(v=>v!==null&&v!==undefined&&v!=="");
+  if (valid.length<2) return <div style={{ fontSize:12, color:C.muted, padding:"4px 0 14px" }}>אין מספיק נתונים עדיין</div>;
+  const nums=valid.map(Number), min=Math.min(...nums), max=Math.max(...nums), range=max-min||1;
+  const W=300, H=60;
+  const pts=data.map((v,i)=>{ if(v===null||v===""||v===undefined) return null; return { x:(i/(data.length-1))*W, y:H-((Number(v)-min)/range)*(H-12) }; });
+  const path=pts.filter(Boolean).map((p,i)=>`${i===0?"M":"L"} ${p.x} ${p.y}`).join(" ");
+  return (
+    <div style={{ marginBottom:20 }}>
+      <div style={{ fontSize:12, fontWeight:700, color:C.soft, marginBottom:6 }}>{title}</div>
+      <svg width="100%" viewBox={`0 0 ${W} ${H+20}`} style={{ overflow:"visible" }}>
+        <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+        {pts.map((p,i)=>p?(<g key={i}>
+          <circle cx={p.x} cy={p.y} r={4} fill={color} />
+          <text x={p.x} y={H+16} textAnchor="middle" fontSize="9" fill={C.muted}>{labels[i]}</text>
+          <text x={p.x} y={p.y-7} textAnchor="middle" fontSize="9" fill={color} fontWeight="700">{data[i]}{unit}</text>
+        </g>):null)}
+      </svg>
+    </div>
+  );
+}
+
+function WeeklyView({ allData }) {
+  const days=Object.values(allData).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
+  if (days.length<2) return <Card><div style={{ textAlign:"center", padding:24, color:C.muted, fontSize:14 }}><div style={{ fontSize:32, marginBottom:10 }}>🌱</div><div>צריך לפחות יומיים של נתונים.</div></div></Card>;
+  const labels=days.map(d=>d.date.slice(5));
+  const hrv=days.map(d=>d.morningBaseline?.hrv||null);
+  const kcal=days.map(d=>d.meals?calcKcal(Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.fat)||0),0))||null:null);
+  const protein=days.map(d=>d.meals?Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0)||null:null);
+  const score=days.map(d=>d.dayScore||null);
+  const mealDiffs=MEAL_KEYS.map(mk=>({ label:MEAL_LABELS[mk], data:days.map(d=>{ const m=d.meals?.[mk]; if(!m?.hrvBefore||!m?.hrvAfter) return null; return Number(m.hrvAfter)-Number(m.hrvBefore); }) }));
+  return (
+    <div>
+      <Card>
+        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>מדדים שבועיים</div>
+        <LineChart data={hrv} labels={labels} color={C.green} title="HRV בוקר" />
+        <LineChart data={kcal} labels={labels} color={C.gold} title="קלוריות יומיות" unit=" kcal" />
+        <LineChart data={protein} labels={labels} color={C.lav} title="חלבון יומי" unit="g" />
+        <LineChart data={score} labels={labels} color={C.greenD} title="ציון יום" />
+      </Card>
+      <Card>
+        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:6 }}>שינוי HRV לפי ארוחות</div>
+        <div style={{ fontSize:11, color:C.muted, marginBottom:14 }}>הפרש HRV לפני vs 90 דק׳ אחרי</div>
+        {mealDiffs.map(({label,data})=>{ const v=data.filter(x=>x!==null); if(!v.length) return null; const avg=Math.round(v.reduce((a,b)=>a+b)/v.length*10)/10; return (
+          <div key={label} style={{ marginBottom:14 }}>
+            <div style={{ display:"flex", justifyContent:"space-between", marginBottom:4 }}>
+              <span style={{ fontSize:13, fontWeight:600, color:C.soft }}>{label}</span>
+              <span style={{ fontSize:12, fontWeight:700, color:avg>=0?C.green:C.peach }}>ממוצע: {avg>=0?"+":""}{avg}</span>
+            </div>
+            <div style={{ display:"flex", gap:4 }}>
+              {data.map((val,i)=>(<div key={i} style={{ flex:1, height:24, borderRadius:6, background:val===null?C.bg:val>=0?C.greenL:C.peachL, display:"flex", alignItems:"center", justifyContent:"center", fontSize:10, fontWeight:700, color:val===null?C.muted:val>=0?C.green:C.peach }}>{val===null?"—":`${val>=0?"+":""}${val}`}</div>))}
+            </div>
+            <div style={{ display:"flex", gap:4, marginTop:2 }}>{labels.map(l=><div key={l} style={{ flex:1, textAlign:"center", fontSize:9, color:C.muted }}>{l}</div>)}</div>
+          </div>
+        );})}
+      </Card>
+      <Card>
+        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:12 }}>מפת תסמינים</div>
+        <div style={{ overflowX:"auto" }}>
+          <table style={{ borderCollapse:"collapse", fontSize:11, width:"100%", minWidth:280 }}>
+            <thead><tr>
+              <th style={{ padding:"4px 6px", color:C.muted, textAlign:"right", fontWeight:600 }}>תסמין</th>
+              {labels.map(l=><th key={l} style={{ padding:"4px 6px", color:C.muted, fontWeight:600 }}>{l}</th>)}
+            </tr></thead>
+            <tbody>{SYMPTOM_KEYS.map(s=>(<tr key={s}>
+              <td style={{ padding:"4px 6px", color:C.soft, fontWeight:500, whiteSpace:"nowrap" }}>{SYMPTOM_LABELS[s]}</td>
+              {days.map((d,i)=>(<td key={i} style={{ padding:"4px 6px", textAlign:"center" }}><div style={{ width:18, height:18, borderRadius:5, background:d.symptoms?.[s]?C.peach:C.greenL, margin:"auto" }} /></td>))}
+            </tr>))}</tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+function MonthlyView({ allData }) {
+  const days=Object.values(allData).sort((a,b)=>a.date.localeCompare(b.date)).slice(-30);
+  if (days.length<4) return <Card><div style={{ textAlign:"center", padding:24, color:C.muted, fontSize:14 }}><div style={{ fontSize:32, marginBottom:10 }}>📅</div><div>צריך לפחות שבוע של נתונים.</div></div></Card>;
+  const labels=days.map(d=>d.date.slice(8));
+  const hrv=days.map(d=>d.morningBaseline?.hrv||null);
+  const kcal=days.map(d=>d.meals?calcKcal(Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.fat)||0),0))||null:null);
+  const score=days.map(d=>d.dayScore||null);
+  const weeks=[];
+  for(let i=0;i<days.length;i+=7){
+    const ch=days.slice(i,i+7);
+    const aH=ch.map(d=>Number(d.morningBaseline?.hrv)).filter(Boolean);
+    const aS=ch.map(d=>d.dayScore).filter(Boolean);
+    const aK=ch.map(d=>d.meals?calcKcal(Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0),Object.values(d.meals).reduce((s,m)=>s+(Number(m.fat)||0),0)):0).filter(v=>v>0);
+    const aP=ch.map(d=>d.meals?Object.values(d.meals).reduce((s,m)=>s+(Number(m.protein)||0),0):0).filter(v=>v>0);
+    weeks.push({ label:`שבוע ${weeks.length+1}`, hrv:aH.length?Math.round(aH.reduce((a,b)=>a+b)/aH.length):null, score:aS.length?Math.round(aS.reduce((a,b)=>a+b)/aS.length*10)/10:null, kcal:aK.length?Math.round(aK.reduce((a,b)=>a+b)/aK.length):null, protein:aP.length?Math.round(aP.reduce((a,b)=>a+b)/aP.length):null });
+  }
+  return (
+    <div>
+      <Card>
+        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>30 יום</div>
+        <LineChart data={hrv} labels={labels} color={C.green} title="HRV בוקר" />
+        <LineChart data={kcal} labels={labels} color={C.gold} title="קלוריות יומיות" unit=" kcal" />
+        <LineChart data={score} labels={labels} color={C.greenD} title="ציון יום" />
+      </Card>
+      <Card>
+        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:12 }}>השוואה שבועית</div>
+        <table style={{ width:"100%", borderCollapse:"collapse", fontSize:13 }}>
+          <thead><tr style={{ borderBottom:`1px solid ${C.border}` }}>
+            {["שבוע","HRV","ציון","kcal","חלבון"].map(h=><th key={h} style={{ padding:"6px 6px", textAlign:h==="שבוע"?"right":"center", color:C.muted, fontWeight:600, fontSize:12 }}>{h}</th>)}
+          </tr></thead>
+          <tbody>{weeks.map((w,i)=>(<tr key={i} style={{ borderBottom:`1px solid ${C.bg}` }}>
+            <td style={{ padding:"8px 6px", fontWeight:600, color:C.text }}>{w.label}</td>
+            <td style={{ padding:"8px 6px", textAlign:"center", color:C.green, fontWeight:700 }}>{w.hrv||"—"}</td>
+            <td style={{ padding:"8px 6px", textAlign:"center", color:C.gold, fontWeight:700 }}>{w.score||"—"}</td>
+            <td style={{ padding:"8px 6px", textAlign:"center", color:C.lav, fontWeight:700 }}>{w.kcal||"—"}</td>
+            <td style={{ padding:"8px 6px", textAlign:"center", color:C.green, fontWeight:700 }}>{w.protein?`${w.protein}g`:"—"}</td>
+          </tr>))}</tbody>
+        </table>
+      </Card>
+    </div>
+  );
+}
+
+function App() {
+  const [view, setView] = useState("daily");
+  const [allData, setAllData] = useState({});
+  const [day, setDay] = useState(null);
+  const [saved, setSaved] = useState(false);
+  const [open, setOpen] = useState({ morning:true, meals:true, activity:false, evening:false });
+
+  useEffect(()=>{ const data=loadData(); setAllData(data); const key=todayKey(); setDay(data[key]||defaultDay()); },[]);
+  const update = useCallback(fn=>{ setDay(p=>typeof fn==="function"?fn(p):fn); setSaved(false); },[]);
+  const tog = k => setOpen(p=>({...p,[k]:!p[k]}));
+  const handleSave = ()=>{
+    const u={...allData,[day.date]:day}; setAllData(u); saveData(u);
+    setSaved(true); setTimeout(()=>setSaved(false),2000);
+  };
+
+  if(!day) return <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", color:C.muted }}>טוענת...</div>;
+
+  const tp=Object.values(day.meals).reduce((s,m)=>s+(Number(m.protein)||0),0);
+  const tc=Object.values(day.meals).reduce((s,m)=>s+(Number(m.carbs)||0),0);
+  const tf=Object.values(day.meals).reduce((s,m)=>s+(Number(m.fat)||0),0);
+
+  return (
+    <div style={{ minHeight:"100vh", width:"100%", background:C.bg, fontFamily:"Georgia, serif", direction:"rtl" }}>
+      <div style={{ background:`linear-gradient(135deg,${C.green} 0%,${C.greenD} 100%)`, padding:"18px 20px 16px", color:"#fff" }}>
+        <div style={{ fontSize:10, opacity:0.75, letterSpacing:1, marginBottom:2 }}>יום {daysSince(TREATMENT_START)} בטיפול</div>
+        <div style={{ fontSize:20, fontWeight:700 }}>{formatDate(day.date)}</div>
+        {view==="daily"&&<HeaderBar protein={tp} carbs={tc} fat={tf} kcalBurned={day.activity.kcalBurned} />}
+      </div>
+
+      <div style={{ display:"flex", background:C.card, borderBottom:`1px solid ${C.border}` }}>
+        {[["daily","יומי"],["weekly","שבועי"],["monthly","חודשי"]].map(([k,l])=>(
+          <button key={k} onClick={()=>setView(k)}
+            style={{ flex:1, padding:"13px 0", border:"none", background:"none", cursor:"pointer", fontSize:14, fontWeight:k===view?700:400, color:k===view?C.green:C.muted, borderBottom:k===view?`2.5px solid ${C.green}`:"2.5px solid transparent" }}>
+            {l}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding:"16px 16px 100px" }}>
+        {view==="weekly"&&<WeeklyView allData={allData} />}
+        {view==="monthly"&&<MonthlyView allData={allData} />}
+        {view==="daily"&&(<>
+          <Card>
+            <SecHeader title="פתיחת יום – לילה שעבר" emoji="🌅" open={open.morning} onToggle={()=>tog("morning")} />
+            {open.morning&&(<>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:10, background:C.greenL, borderRadius:8, padding:"6px 10px" }}>נתוני הלילה שעבר + baseline לפני קפה ואכילה</div>
+              <div style={{ fontSize:13, fontWeight:700, color:C.soft, marginBottom:8 }}>שינה</div>
+              <Grid cols={2}><div><Lbl>שעת שינה</Lbl><TF value={day.sleep.start} onChange={v=>update(p=>({...p,sleep:{...p.sleep,start:v}}))} /></div><div><Lbl>שעת קימה</Lbl><TF value={day.sleep.end} onChange={v=>update(p=>({...p,sleep:{...p.sleep,end:v}}))} /></div></Grid>
+              <Grid cols={3}>
+                <div><Lbl>ציון שינה</Lbl><Num value={day.sleep.samsungScore} onChange={v=>update(p=>({...p,sleep:{...p.sleep,samsungScore:v}}))} /></div>
+                <div><Lbl>שינה עמוקה</Lbl><Num value={day.sleep.deepMin} unit="דק׳" onChange={v=>update(p=>({...p,sleep:{...p.sleep,deepMin:v}}))} /></div>
+                <div><Lbl>דופק מנוחה</Lbl><Num value={day.sleep.restingHR} unit="bpm" onChange={v=>update(p=>({...p,sleep:{...p.sleep,restingHR:v}}))} /></div>
+              </Grid>
+              <div style={{ fontSize:13, fontWeight:700, color:C.soft, marginBottom:8 }}>HRV בסיס</div>
+              <Grid cols={3}>
+                <div><Lbl>HRV</Lbl><Num value={day.morningBaseline.hrv} onChange={v=>update(p=>({...p,morningBaseline:{...p.morningBaseline,hrv:v}}))} /></div>
+                <div><Lbl>אנרגיה</Lbl><Num value={day.morningBaseline.energyPct} unit="%" onChange={v=>update(p=>({...p,morningBaseline:{...p.morningBaseline,energyPct:v}}))} /></div>
+                <div><Lbl>סטרס</Lbl><Num value={day.morningBaseline.stressPct} unit="%" onChange={v=>update(p=>({...p,morningBaseline:{...p.morningBaseline,stressPct:v}}))} /></div>
+              </Grid>
+              <Lbl>אנרגיה סובייקטיבית בהתעוררות</Lbl>
+              <Slider value={day.morningBaseline.energySubjective} onChange={v=>update(p=>({...p,morningBaseline:{...p.morningBaseline,energySubjective:v}}))} />
+              <div style={{ marginTop:14 }}><Lbl>טקס בוקר</Lbl>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                  {[["water","מים חמים"],["electrolytes","אלקטרוליטים"],["sun","שמש 5 דק׳"],["collagen","קולגן בקפה"]].map(([k,l])=>(
+                    <Pill key={k} active={day.rituals[k]} onToggle={()=>update(p=>({...p,rituals:{...p.rituals,[k]:!p.rituals[k]}}))} label={l} />
+                  ))}
+                </div>
+              </div>
+            </>)}
+          </Card>
+
+          <Card>
+            <SecHeader title="ארוחות" emoji="🥗" open={open.meals} onToggle={()=>tog("meals")} />
+            {open.meals&&(<>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:10 }}>קלוריות מחושבות אוטומטית • HRV לפני/אחרי אופציונלי</div>
+              {MEAL_KEYS.map(key=>(<MealBlock key={key} meal={day.meals[key]} mealKey={key} onChange={m=>update(p=>({...p,meals:{...p.meals,[key]:m}}))} />))}
+            </>)}
+          </Card>
+
+          <Card>
+            <SecHeader title="פעילות גופנית" emoji="🏋️" open={open.activity} onToggle={()=>tog("activity")} />
+            {open.activity&&(<>
+              <div style={{ marginBottom:12 }}>
+                <Lbl>סוג פעילות</Lbl>
+                <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                  {ACTIVITY_TYPES.map(t=>(<button key={t} onClick={()=>update(p=>({...p,activity:{...p.activity,type:t}}))}
+                    style={{ padding:"5px 11px", borderRadius:20, border:"none", cursor:"pointer", fontSize:12, fontWeight:500, background:day.activity.type===t?C.green:C.bg, color:day.activity.type===t?"#fff":C.soft, marginBottom:4 }}>{t}</button>))}
+                </div>
+              </div>
+              <Grid cols={2}>
+                <div><Lbl>משך</Lbl><Num value={day.activity.duration} onChange={v=>update(p=>({...p,activity:{...p.activity,duration:v}}))} unit="דק׳" wide /></div>
+                <div><Lbl>קלוריות שרופות (שעון)</Lbl><Num value={day.activity.kcalBurned} onChange={v=>update(p=>({...p,activity:{...p.activity,kcalBurned:v}}))} unit="kcal" wide /></div>
+              </Grid>
+              <Lbl>הערות</Lbl>
+              <TA value={day.activity.notes} onChange={v=>update(p=>({...p,activity:{...p.activity,notes:v}}))} placeholder="איך הרגשת, מה עבדת..." />
+            </>)}
+          </Card>
+
+          <Card>
+            <SecHeader title="סגירת יום – לפני שינה" emoji="🌙" open={open.evening} onToggle={()=>tog("evening")} />
+            {open.evening&&(<>
+              <div style={{ fontSize:11, color:C.muted, marginBottom:12, background:"#f5f0f8", borderRadius:8, padding:"6px 10px" }}>ממלאים לפני השינה</div>
+              <div style={{ fontSize:13, fontWeight:700, color:C.soft, marginBottom:8 }}>HRV ערב</div>
+              <Grid cols={3} mb={14}>
+                <div><Lbl>HRV</Lbl><Num value={day.eveningReading?.hrv||""} onChange={v=>update(p=>({...p,eveningReading:{...p.eveningReading,hrv:v}}))} /></div>
+                <div><Lbl>אנרגיה</Lbl><Num value={day.eveningReading?.energyPct||""} unit="%" onChange={v=>update(p=>({...p,eveningReading:{...p.eveningReading,energyPct:v}}))} /></div>
+                <div><Lbl>סטרס</Lbl><Num value={day.eveningReading?.stressPct||""} unit="%" onChange={v=>update(p=>({...p,eveningReading:{...p.eveningReading,stressPct:v}}))} /></div>
+              </Grid>
+              <Lbl>תסמינים</Lbl>
+              <div style={{ display:"flex", flexWrap:"wrap", gap:6, marginBottom:14 }}>
+                {SYMPTOM_KEYS.map(k=>(<Pill key={k} active={day.symptoms[k]} onToggle={()=>update(p=>({...p,symptoms:{...p.symptoms,[k]:!p.symptoms[k]}}))} label={SYMPTOM_LABELS[k]} />))}
+              </div>
+              <Lbl>הערות יומיות</Lbl>
+              <TA value={day.notes} onChange={v=>update(p=>({...p,notes:v}))} placeholder="מה חשוב לזכור מהיום..." rows={3} />
+              <div style={{ marginTop:14 }}><Lbl>ציון יום כללי</Lbl><Slider value={day.dayScore} onChange={v=>update(p=>({...p,dayScore:v}))} color={C.gold} /></div>
+            </>)}
+          </Card>
+        </>)}
+      </div>
+
+      {view==="daily"&&(
+        <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"10px 16px 14px", background:C.card, borderTop:`1px solid ${C.border}` }}>
+          <button onClick={handleSave}
+            style={{ width:"100%", padding:14, background:saved?C.green:C.greenD, color:"#fff", border:"none", borderRadius:14, fontSize:16, fontWeight:700, cursor:"pointer" }}>
+            {saved?"✓ נשמר!":"שמור יום"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Root() {
+  const [hasKey, setHasKey] = React.useState(!!localStorage.getItem("shari_api_key"));
+  if (!hasKey) return <ApiKeySetup onSave={() => setHasKey(true)} />;
+  return <App />;
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<Root />);
+</script>
+</body>
+</html>
