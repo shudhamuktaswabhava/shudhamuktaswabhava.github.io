@@ -145,10 +145,16 @@ function HeaderBar({ protein, carbs, fat, kcalBurned }) {
   const kcalIn = calcKcal(protein, carbs, fat);
   const net = kcalIn - (Number(kcalBurned)||0);
   const items = [
-    { label:"חלבון", val:protein, goal:120, min:90, color:C.green, unit:"g" },
-    { label:"פחמימות", val:carbs, goal:80, min:70, color:C.gold, unit:"g" },
-    { label:"שומן", val:fat, goal:45, min:40, color:C.lav, unit:"g" },
+    { label:"חלבון", val:protein, goal:135, min:100, color:C.green, unit:"g" },
+    { label:"פחמימות", val:carbs, goal:40, min:20, color:C.gold, unit:"g" },
+    { label:"שומן", val:fat, goal:85, min:55, color:C.lav, unit:"g" },
   ];
+  function barColor(val, goal) {
+    if (!val || val === 0) return "rgba(255,255,255,0.25)";
+    if (val > goal) return "#ff6b6b";
+    if (val >= goal * 0.75) return "#86efac";
+    return "#fbbf24";
+  }
   return (
     <div style={{ marginTop:12 }}>
       <div style={{ display:"flex", gap:8 }}>
@@ -156,7 +162,7 @@ function HeaderBar({ protein, carbs, fat, kcalBurned }) {
           <div key={label} style={{ flex:1, background:"rgba(255,255,255,0.15)", borderRadius:12, padding:"7px 8px", textAlign:"center" }}>
             <div style={{ fontSize:10, color:"rgba(255,255,255,0.75)", marginBottom:3 }}>{label}</div>
             <div style={{ height:4, background:"rgba(255,255,255,0.2)", borderRadius:2, marginBottom:4, overflow:"hidden" }}>
-              <div style={{ height:"100%", width:`${Math.min(100,(val/goal)*100)}%`, background:val>goal*1.1?C.peach:val<min&&val>0?"#ffd580":"#fff", borderRadius:2 }} />
+              <div style={{ height:"100%", width:`${Math.min(100,(val/goal)*100)}%`, background:barColor(val,goal), borderRadius:2, transition:"width 0.3s, background 0.3s" }} />
             </div>
             <div style={{ fontSize:15, fontWeight:800, color:"#fff" }}>{val}<span style={{ fontSize:9, fontWeight:400 }}>{unit}</span></div>
           </div>
@@ -320,8 +326,8 @@ GI MAP: H. pylori גבוה (2.33e3) – עמיד לקלריתרומיצין. Lac
 שלב 1 (עכשיו, 2 חודשים): ציר סטרס – Energymaca, Multivitamin, Diabenil, Stress Balance, Magnesium, B-Complex
 שלב 2: H. pylori | שלב 3: מיקרוביום | שלב 4: שיקום מעי | שלב 5: כבד + נוגדי חמצון
 
-**תזונה:**
-חלבון: 30-40g/ארוחה, 90-120g/יום. פחמימות: 0 בבוקר, אופציונלי בצהריים, 30-40g בערב. שומן: כף/ארוחה – שומנים טובים בלבד. אסור: סוכר, פחמימות פשוטות, שמני זרעים. מומלץ: ירוקים כהים, צבעוניים, נוגדי חמצון. שתייה: 2.5-3L/יום.`;
+**תזונה (78.5 ק"ג – לפי Attia/Lustig/Hyman):**
+חלבון: 30-40g/ארוחה, יעד 135g/יום (מינימום 100g). פחמימות: 0 בבוקר, אופציונלי בצהריים, עד 20-25g בערב, יעד כולל 40g/יום. שומן: 80-90g/יום – שומנים טובים בלבד (אבוקדו, שמן זית, אגוזים, דגים שמנים). אסור: סוכר, פחמימות פשוטות, שמני זרעים. מומלץ: ירוקים כהים, צבעוניים, נוגדי חמצון. שתייה: 2.5-3L/יום.`;
 
 function AIChat({ day, allData, onClose }) {
   const [messages, setMessages] = React.useState([]);
