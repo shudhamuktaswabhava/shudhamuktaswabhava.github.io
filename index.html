@@ -389,11 +389,11 @@ function DatePicker({ currentDate, onDateChange }) {
   return (
     <div style={{ position:"relative" }}>
       <button onClick={()=>setShowPicker(!showPicker)}
-        style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:8, padding:"4px 10px", color:"#fff", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:4 }}>
+        style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:8, padding:"4px 10px", color:"#fff", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
         {currentDate === today ? "היום" : formatDate(currentDate)} {showPicker?"▲":"▼"}
       </button>
       {showPicker&&(
-        <div style={{ position:"absolute", top:"100%", left:0, background:"#fff", borderRadius:12, padding:12, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:100, marginTop:4 }}>
+        <div style={{ position:"fixed", top:"auto", right:16, background:"#fff", borderRadius:12, padding:12, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:1000, marginTop:4 }}>
           <div style={{ fontSize:12, color:"#b0a898", marginBottom:8 }}>בחרי תאריך</div>
           <input type="date" defaultValue={currentDate} max={today}
             onChange={e=>{ onDateChange(e.target.value); setShowPicker(false); }}
@@ -428,9 +428,11 @@ function App() {
   return (
     <div style={{ minHeight:"100vh", width:"100%", background:C.bg, fontFamily:"Georgia, serif", direction:"rtl" }}>
       <div style={{ background:`linear-gradient(135deg,${C.green} 0%,${C.greenD} 100%)`, padding:"18px 20px 16px", color:"#fff" }}>
-        <div style={{ fontSize:10, opacity:0.75, letterSpacing:1, marginBottom:2 }}>יום {daysSince(TREATMENT_START)} בטיפול</div>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <div style={{ fontSize:20, fontWeight:700 }}>{formatDate(day.date)}</div>
+        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start" }}>
+          <div>
+            <div style={{ fontSize:10, opacity:0.75, letterSpacing:1, marginBottom:2 }}>יום {daysSince(TREATMENT_START)} בטיפול</div>
+            <div style={{ fontSize:20, fontWeight:700 }}>{formatDate(day.date)}</div>
+          </div>
           {view==="daily"&&<DatePicker currentDate={day.date} onDateChange={newDate=>{ const data=loadData(); setDay(data[newDate]||{...defaultDay(), date:newDate}); setSaved(false); }} />}
         </div>
         {view==="daily"&&<HeaderBar protein={tp} carbs={tc} fat={tf} kcalBurned={day.activity.kcalBurned} />}
