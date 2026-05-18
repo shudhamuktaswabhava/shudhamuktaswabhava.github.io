@@ -424,7 +424,7 @@ HRV ערב: ${day.eveningReading?.hrv||"—"} | ציון יום: ${day.dayScore|
   );
 }
 
-
+function WeeklyView({ allData }) {
   const days=Object.values(allData).sort((a,b)=>a.date.localeCompare(b.date)).slice(-7);
   if (days.length<2) return <Card><div style={{ textAlign:"center", padding:24, color:C.muted, fontSize:14 }}><div style={{ fontSize:32, marginBottom:10 }}>🌱</div><div>צריך לפחות יומיים של נתונים.</div></div></Card>;
   const labels=days.map(d=>d.date.slice(5));
