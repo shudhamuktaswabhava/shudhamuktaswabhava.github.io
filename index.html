@@ -273,21 +273,39 @@ function MealBlock({ meal, mealKey, onChange }) {
 
 function LineChart({ data, labels, color, title, unit="" }) {
   const valid = data.filter(v=>v!==null&&v!==undefined&&v!=="");
-  if (valid.length<2) return <div style={{ fontSize:12, color:C.muted, padding:"4px 0 14px" }}>אין מספיק נתונים עדיין</div>;
-  const nums=valid.map(Number), min=Math.min(...nums), max=Math.max(...nums), range=max-min||1;
-  const W=300, H=60, PX=22;
-  const pts=data.map((v,i)=>{ if(v===null||v===""||v===undefined) return null; return { x:PX+(i/(data.length-1))*(W-2*PX), y:H-((Number(v)-min)/range)*(H-12) }; });
-  const path=pts.filter(Boolean).map((p,i)=>`${i===0?"M":"L"} ${p.x} ${p.y}`).join(" ");
+  if (valid.length<2) return <div style={{ fontSize:11, color:C.muted, padding:"4px 0 10px" }}>אין מספיק נתונים עדיין</div>;
+  const nums=valid.map(Number), minV=Math.min(...nums), maxV=Math.max(...nums), range=maxV-minV||1;
+  const W=300, H=70, PL=36, PR=10, PT=18, PB=22;
+  const chartW=W-PL-PR, chartH=H-PT-PB;
+  const toX=(i)=>PL+(i/(data.length-1))*chartW;
+  const toY=(v)=>PT+chartH-((Number(v)-minV)/range)*chartH;
+  const pts=data.map((v,i)=>v===null||v===""||v===undefined?null:{x:toX(i),y:toY(v)});
+  const path=pts.filter(Boolean).map((p,j,arr)=>`${j===0||(arr[j-1]===null&&j>0)?"M":"L"} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
+  const yMid=((minV+maxV)/2);
   return (
-    <div style={{ marginBottom:20 }}>
-      <div style={{ fontSize:12, fontWeight:700, color:C.soft, marginBottom:6 }}>{title}</div>
-      <svg width="100%" viewBox={`0 0 ${W} ${H+20}`} style={{ overflow:"visible" }}>
-        <path d={path} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-        {pts.map((p,i)=>p?(<g key={i}>
-          <circle cx={p.x} cy={p.y} r={4} fill={color} />
-          <text x={p.x} y={H+16} textAnchor="middle" fontSize="9" fill={C.muted}>{labels[i]}</text>
-          <text x={p.x} y={p.y-7} textAnchor="middle" fontSize="9" fill={color} fontWeight="700">{data[i]}{unit}</text>
-        </g>):null)}
+    <div style={{ marginBottom:4 }}>
+      {title&&<div style={{ fontSize:11, fontWeight:700, color:C.soft, marginBottom:2 }}>{title}</div>}
+      <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow:"visible", display:"block" }}>
+        {/* Y axis line */}
+        <line x1={PL} y1={PT} x2={PL} y2={PT+chartH} stroke={C.border} strokeWidth="1" />
+        {/* X axis line */}
+        <line x1={PL} y1={PT+chartH} x2={PL+chartW} y2={PT+chartH} stroke={C.border} strokeWidth="1" />
+        {/* Y gridlines + labels: max, mid, min */}
+        {[{v:maxV,y:PT},{v:yMid,y:PT+chartH/2},{v:minV,y:PT+chartH}].map(({v,y})=>(
+          <g key={y}>
+            <line x1={PL} y1={y} x2={PL+chartW} y2={y} stroke={C.border} strokeWidth="0.5" strokeDasharray="3,3" />
+            <text x={PL-3} y={y+3} textAnchor="end" fontSize="8" fill={C.muted}>{Number.isInteger(v)?v:v.toFixed(1)}</text>
+          </g>
+        ))}
+        {/* Line */}
+        <path d={path} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        {/* Points + X labels */}
+        {pts.map((p,i)=>p?(
+          <g key={i}>
+            <circle cx={p.x} cy={p.y} r={3} fill={color} />
+            <text x={p.x} y={PT+chartH+14} textAnchor="middle" fontSize="8" fill={C.muted}>{labels[i]}</text>
+          </g>
+        ):null)}
       </svg>
     </div>
   );
@@ -397,16 +415,17 @@ HRV ערב: ${day.eveningReading?.hrv||"—"} | ציון יום: ${day.dayScore|
         </div>
         <div style={{ flex:1, overflowY:"auto", padding:"14px 14px 4px" }}>
           {messages.map((m,i)=>(
-            <div key={i} style={{ marginBottom:10, display:"flex", justifyContent:m.role==="user"?"flex-start":"flex-end" }}>
-              <div style={{ maxWidth:"88%", padding:"10px 13px", borderRadius:m.role==="user"?"4px 14px 14px 14px":"14px 4px 14px 14px",
-                background:m.role==="user"?C.card:C.greenL, color:C.text, fontSize:13, lineHeight:1.6,
-                boxShadow:"0 1px 4px rgba(0,0,0,0.07)", whiteSpace:"pre-wrap" }}>
+            <div key={i} style={{ marginBottom:12, display:"flex", justifyContent:m.role==="user"?"flex-end":"flex-start" }}>
+              <div style={{ maxWidth:m.role==="assistant"?"96%":"80%", width:m.role==="assistant"?"96%":"auto",
+                padding:"11px 14px", borderRadius:m.role==="user"?"14px 4px 14px 14px":"4px 14px 14px 14px",
+                background:m.role==="user"?C.greenD:C.card, color:m.role==="user"?"#fff":C.text,
+                fontSize:15, lineHeight:1.7, boxShadow:"0 1px 4px rgba(0,0,0,0.07)", whiteSpace:"pre-wrap" }}>
                 {m.role==="assistant" ? m.content.replace(/\*\*(.+?)\*\*/g,"$1").replace(/\*(.+?)\*/g,"$1") : m.content}
               </div>
             </div>
           ))}
-          {loading&&<div style={{ display:"flex", justifyContent:"flex-end", marginBottom:10 }}>
-            <div style={{ background:C.greenL, borderRadius:"14px 4px 14px 14px", padding:"10px 14px", color:C.green, fontSize:13 }}>✦ חושבת...</div>
+          {loading&&<div style={{ display:"flex", justifyContent:"flex-start", marginBottom:10 }}>
+            <div style={{ background:C.card, borderRadius:"4px 14px 14px 14px", padding:"11px 14px", color:C.green, fontSize:15 }}>✦ חושבת...</div>
           </div>}
           <div ref={endRef} />
         </div>
@@ -541,18 +560,25 @@ function MonthlyView({ allData }) {
 function DatePicker({ currentDate, onDateChange }) {
   const [showPicker, setShowPicker] = React.useState(false);
   const today = todayKey();
+  const ref = React.useRef(null);
+  React.useEffect(()=>{
+    if(!showPicker) return;
+    const handler = e=>{ if(ref.current&&!ref.current.contains(e.target)) setShowPicker(false); };
+    document.addEventListener("mousedown", handler);
+    return ()=>document.removeEventListener("mousedown", handler);
+  },[showPicker]);
   return (
-    <div style={{ position:"relative" }}>
+    <div ref={ref} style={{ position:"relative" }}>
       <button onClick={()=>setShowPicker(!showPicker)}
         style={{ background:"rgba(255,255,255,0.2)", border:"none", borderRadius:8, padding:"4px 10px", color:"#fff", fontSize:12, cursor:"pointer", display:"flex", alignItems:"center", gap:4, whiteSpace:"nowrap" }}>
         {currentDate === today ? "היום" : formatDate(currentDate)} {showPicker?"▲":"▼"}
       </button>
       {showPicker&&(
-        <div style={{ position:"fixed", top:"auto", right:16, background:"#fff", borderRadius:12, padding:12, boxShadow:"0 4px 20px rgba(0,0,0,0.15)", zIndex:1000, marginTop:4 }}>
+        <div style={{ position:"absolute", top:"calc(100% + 6px)", left:0, background:"#fff", borderRadius:12, padding:12, boxShadow:"0 4px 20px rgba(0,0,0,0.18)", zIndex:1000, minWidth:180 }}>
           <div style={{ fontSize:12, color:"#b0a898", marginBottom:8 }}>בחרי תאריך</div>
           <input type="date" defaultValue={currentDate} max={today}
             onChange={e=>{ onDateChange(e.target.value); setShowPicker(false); }}
-            style={{ padding:"6px 10px", border:"1.5px solid #e5e0d8", borderRadius:8, fontSize:13, outline:"none" }} />
+            style={{ padding:"6px 10px", border:"1.5px solid #e5e0d8", borderRadius:8, fontSize:13, outline:"none", width:"100%", boxSizing:"border-box" }} />
         </div>
       )}
     </div>
