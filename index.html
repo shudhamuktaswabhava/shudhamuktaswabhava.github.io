@@ -314,7 +314,7 @@ function SymptomIntensity({ label, value, onChange }) {
   );
 }
 
-const MEDICAL_SYSTEM_PROMPT = `את יועצת בריאות אישית של שרי לוי. מלווה אותה בתוכנית הרפואית שלה. ענה תמיד בעברית בשפה תומכת ומעשית. תני הסברים רפואיים ברורים כשרלוונטי.
+const MEDICAL_SYSTEM_PROMPT = `את יועצת בריאות אישית של שרי לוי. מלווה אותה בתוכנית הרפואית שלה. ענה תמיד בעברית בשפה תומכת ומעשית. תני הסברים רפואיים ברורים כשרלוונטי. אל תשתמש בכוכביות (**) או בכל סימוני Markdown אחרים. כתבי טקסט רגיל בלבד.
 
 **רקע רפואי:**
 פוסטמנופאוזה – הורמונים בטווח נורמלי לגיל.
@@ -401,7 +401,7 @@ HRV ערב: ${day.eveningReading?.hrv||"—"} | ציון יום: ${day.dayScore|
               <div style={{ maxWidth:"88%", padding:"10px 13px", borderRadius:m.role==="user"?"4px 14px 14px 14px":"14px 4px 14px 14px",
                 background:m.role==="user"?C.card:C.greenL, color:C.text, fontSize:13, lineHeight:1.6,
                 boxShadow:"0 1px 4px rgba(0,0,0,0.07)", whiteSpace:"pre-wrap" }}>
-                {m.content}
+                {m.role==="assistant" ? m.content.replace(/\*\*(.+?)\*\*/g,"$1").replace(/\*(.+?)\*/g,"$1") : m.content}
               </div>
             </div>
           ))}
@@ -444,18 +444,14 @@ function WeeklyView({ allData }) {
   const mealDiffs=MEAL_KEYS.map(mk=>({ label:MEAL_LABELS[mk], data:days.map(d=>{ const m=d.meals?.[mk]; if(!m?.hrvBefore||!m?.hrvAfter) return null; return Number(m.hrvAfter)-Number(m.hrvBefore); }) }));
   return (
     <div>
-      <Card>
-        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>גוף</div>
-        <LineChart data={weight} labels={labels} color={C.peach} title="משקל" unit=" ק״ג" />
-        <LineChart data={waist} labels={labels} color={C.gold} title="היקף מותניים" unit=" ס״מ" />
-      </Card>
-      <Card>
-        <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:14 }}>מדדים שבועיים</div>
-        <LineChart data={hrv} labels={labels} color={C.green} title="HRV בוקר" />
-        <LineChart data={kcal} labels={labels} color={C.gold} title="קלוריות יומיות" unit=" kcal" />
-        <LineChart data={protein} labels={labels} color={C.lav} title="חלבון יומי" unit="g" />
-        <LineChart data={score} labels={labels} color={C.greenD} title="ציון יום" />
-      </Card>
+      <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10, marginBottom:10 }}>
+        <Card><div style={{ fontWeight:700, fontSize:13, color:C.text, marginBottom:8 }}>⚖️ משקל</div><LineChart data={weight} labels={labels} color={C.peach} title="" unit=" ק״ג" /></Card>
+        <Card><div style={{ fontWeight:700, fontSize:13, color:C.text, marginBottom:8 }}>📏 מותניים</div><LineChart data={waist} labels={labels} color={C.gold} title="" unit=" ס״מ" /></Card>
+        <Card><div style={{ fontWeight:700, fontSize:13, color:C.text, marginBottom:8 }}>💚 HRV בוקר</div><LineChart data={hrv} labels={labels} color={C.green} title="" /></Card>
+        <Card><div style={{ fontWeight:700, fontSize:13, color:C.text, marginBottom:8 }}>🔥 קלוריות</div><LineChart data={kcal} labels={labels} color={C.gold} title="" unit=" kcal" /></Card>
+        <Card><div style={{ fontWeight:700, fontSize:13, color:C.text, marginBottom:8 }}>🥩 חלבון</div><LineChart data={protein} labels={labels} color={C.lav} title="" unit="g" /></Card>
+        <Card><div style={{ fontWeight:700, fontSize:13, color:C.text, marginBottom:8 }}>⭐ ציון יום</div><LineChart data={score} labels={labels} color={C.greenD} title="" /></Card>
+      </div>
       <Card>
         <div style={{ fontWeight:700, fontSize:15, color:C.text, marginBottom:6 }}>שינוי HRV לפי ארוחות</div>
         <div style={{ fontSize:11, color:C.muted, marginBottom:14 }}>הפרש HRV לפני vs 90 דק׳ אחרי</div>
