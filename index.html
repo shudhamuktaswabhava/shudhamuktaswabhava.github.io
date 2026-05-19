@@ -211,6 +211,30 @@ function MealBlock({ meal, mealKey, onChange }) {
     setLoading(false);
   };
 
+  const analyzePhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setLoading(true);
+    try {
+      const base64 = await new Promise((res,rej)=>{ const r=new FileReader(); r.onload=()=>res(r.result.split(",")[1]); r.onerror=rej; r.readAsDataURL(file); });
+      const mediaType = file.type || "image/jpeg";
+      const resp = await fetch("https://api.anthropic.com/v1/messages", {
+        method:"POST", headers:{"Content-Type":"application/json","x-api-key":localStorage.getItem("shari_api_key")||"","anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true"},
+        body: JSON.stringify({ model:"claude-sonnet-4-20250514", max_tokens:300,
+          messages:[{ role:"user", content:[
+            { type:"image", source:{ type:"base64", media_type:mediaType, data:base64 }},
+            { type:"text", text:`זהי את המזון בתמונה והעריכי מאקרו לארוחה זו. ענה רק ב-JSON: {"description":"תיאור קצר בעברית","protein":X,"carbs":X,"fat":X}` }
+          ]}]
+        })
+      });
+      const data = await resp.json();
+      const parsed = JSON.parse((data.content?.[0]?.text||"{}").replace(/```json|```/g,"").trim());
+      onChange({ ...meal, description:parsed.description||meal.description, protein:parsed.protein||0, carbs:parsed.carbs||0, fat:parsed.fat||0 });
+    } catch(e) { alert("שגיאה בניתוח תמונה."); }
+    setLoading(false);
+    e.target.value="";
+  };
+
   return (
     <div style={{ background:C.bg, borderRadius:14, padding:14, marginBottom:10 }}>
       <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:10, flexWrap:"wrap", gap:6 }}>
@@ -227,6 +251,10 @@ function MealBlock({ meal, mealKey, onChange }) {
         <button onClick={calcMacro} disabled={loading} style={{ padding:"6px 14px", background:loading?C.border:C.green, color:"#fff", border:"none", borderRadius:8, fontSize:13, cursor:"pointer", fontWeight:600 }}>
           {loading?"מחשב...":"⚡ חשב מאקרו"}
         </button>
+        <label style={{ padding:"6px 12px", background:loading?C.border:C.card, color:loading?C.muted:C.soft, border:`1.5px solid ${C.border}`, borderRadius:8, fontSize:13, cursor:loading?"not-allowed":"pointer", fontWeight:600, display:"flex", alignItems:"center", gap:5 }}>
+          📷 צלמי
+          <input type="file" accept="image/*" capture="environment" onChange={analyzePhoto} disabled={loading} style={{ display:"none" }} />
+        </label>
         {meal.protein>0&&<span style={{ fontSize:12 }}>
           <span style={{ color:C.green, fontWeight:700 }}>{meal.protein}g</span>{" · "}
           <span style={{ color:C.gold, fontWeight:700 }}>{meal.carbs}g</span>{" · "}
@@ -601,6 +629,33 @@ function App() {
     setSaved(true); setTimeout(()=>setSaved(false),2000);
   };
 
+  const handleExport = () => {
+    const data = loadData();
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = `shari_health_${todayKey()}.json`; a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const imported = JSON.parse(ev.target.result);
+        saveData(imported);
+        setAllData(imported);
+        const key = todayKey();
+        setDay(imported[key] || defaultDay());
+        alert("✓ הנתונים נטענו בהצלחה!");
+      } catch(err) { alert("שגיאה בטעינת הקובץ."); }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
+  };
+
   if(!day) return <div style={{ display:"flex", justifyContent:"center", alignItems:"center", height:"100vh", color:C.muted }}>טוענת...</div>;
 
   const tp=Object.values(day.meals).reduce((s,m)=>s+(Number(m.protein)||0),0);
@@ -714,18 +769,31 @@ function App() {
         </>)}
       </div>
 
-      {view==="daily"&&(
-        <div style={{ position:"fixed", bottom:0, left:0, right:0, padding:"10px 16px 14px", background:C.card, borderTop:`1px solid ${C.border}`, display:"flex", gap:8 }}>
-          <button onClick={()=>setChatOpen(true)}
-            style={{ flex:"0 0 auto", padding:"14px 16px", background:`linear-gradient(135deg,${C.green},${C.greenD})`, color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
-            🌿 יועץ
+      <div style={{ position:"fixed", bottom:0, left:0, right:0, background:C.card, borderTop:`1px solid ${C.border}` }}>
+        <div style={{ display:"flex", gap:6, padding:"8px 16px 0" }}>
+          <button onClick={handleExport}
+            style={{ flex:1, padding:"8px 0", background:"none", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:12, color:C.soft, cursor:"pointer", fontWeight:600 }}>
+            ⬇️ יצוא
           </button>
-          <button onClick={handleSave}
-            style={{ flex:1, padding:14, background:saved?C.green:C.greenD, color:"#fff", border:"none", borderRadius:14, fontSize:16, fontWeight:700, cursor:"pointer" }}>
-            {saved?"✓ נשמר!":"שמור יום"}
-          </button>
+          <label style={{ flex:1, padding:"8px 0", background:"none", border:`1.5px solid ${C.border}`, borderRadius:10, fontSize:12, color:C.soft, cursor:"pointer", fontWeight:600, textAlign:"center" }}>
+            ⬆️ ייבוא
+            <input type="file" accept=".json" onChange={handleImport} style={{ display:"none" }} />
+          </label>
         </div>
-      )}
+        {view==="daily"&&(
+          <div style={{ padding:"8px 16px 14px", display:"flex", gap:8 }}>
+            <button onClick={()=>setChatOpen(true)}
+              style={{ flex:"0 0 auto", padding:"14px 16px", background:`linear-gradient(135deg,${C.green},${C.greenD})`, color:"#fff", border:"none", borderRadius:14, fontSize:14, fontWeight:700, cursor:"pointer", display:"flex", alignItems:"center", gap:6 }}>
+              🌿 יועץ
+            </button>
+            <button onClick={handleSave}
+              style={{ flex:1, padding:14, background:saved?C.green:C.greenD, color:"#fff", border:"none", borderRadius:14, fontSize:16, fontWeight:700, cursor:"pointer" }}>
+              {saved?"✓ נשמר!":"שמור יום"}
+            </button>
+          </div>
+        )}
+        {view!=="daily"&&<div style={{ height:14 }} />}
+      </div>
       {chatOpen&&<AIChat day={day} allData={allData} onClose={()=>setChatOpen(false)} />}
     </div>
   );
